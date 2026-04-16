@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	connect "connectrpc.com/connect"
-	"github.com/synthify/backend/internal/middleware"
-	"github.com/synthify/backend/internal/repository/mock"
+	"github.com/Keyhole-Koro/SynthifyShared/middleware"
+	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
 )
 
 // assertConnectCode fails the test if err is nil or does not carry the expected connect code.

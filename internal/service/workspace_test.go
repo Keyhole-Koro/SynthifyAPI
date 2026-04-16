@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/synthify/backend/internal/repository/mock"
+	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
 )
 
 // createWorkspaceForUser is a helper that creates an account and workspace for userID.

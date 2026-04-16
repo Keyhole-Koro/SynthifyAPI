@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Keyhole-Koro/SynthifyShared/app"
 	graphv1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/graph/v1/graphv1connect"
+	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
+	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/synthify/backend/api/internal/handler"
 	"github.com/synthify/backend/api/internal/service"
-	"github.com/synthify/backend/internal/app"
-	"github.com/synthify/backend/internal/jobstatus"
-	"github.com/synthify/backend/internal/middleware"
-	"github.com/synthify/backend/internal/worker"
+	"github.com/synthify/backend/worker/pkg/worker"
 )
 
 func main() {

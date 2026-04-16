@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	connect "connectrpc.com/connect"
+	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
-	"github.com/synthify/backend/internal/middleware"
 )
 
 func currentUser(ctx context.Context) (middleware.AuthUser, error) {

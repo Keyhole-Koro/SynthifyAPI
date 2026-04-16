@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/synthify/backend/internal/repository/mock"
+	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
 )
 
 // setupGraphFixtures creates an account, workspace, graph, and seed data.

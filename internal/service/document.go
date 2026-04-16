@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
-	"github.com/synthify/backend/internal/jobstatus"
-	"github.com/synthify/backend/internal/worker"
+	"github.com/synthify/backend/worker/pkg/worker"
 )
 
 type DocumentService struct {
