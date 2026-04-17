@@ -32,3 +32,7 @@ func (s *GraphService) FindPaths(graphID, sourceNodeID, targetNodeID string, max
 func (s *GraphService) GetOrCreateGraph(workspaceID string) (*domain.Graph, error) {
 	return s.repo.GetOrCreateGraph(workspaceID)
 }
+
+func (s *GraphService) GetSubtree(rootNodeID string, maxDepth int) ([]*domain.SubtreeNode, []*domain.Edge, error) {
+	return s.repo.GetSubtree(rootNodeID, maxDepth)
+}

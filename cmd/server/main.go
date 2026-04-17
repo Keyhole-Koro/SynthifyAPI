@@ -32,11 +32,14 @@ func main() {
 	graphService := service.NewGraphService(store)
 	nodeService := service.NewNodeService(store, store)
 
+	graphHandler := handler.NewGraphHandler(graphService, store, store)
+
 	mux := http.NewServeMux()
 	mux.Handle(graphv1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService)))
 	mux.Handle(graphv1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.PublicUploadURLGenerator(uploadURLBase))))
-	mux.Handle(graphv1connect.NewGraphServiceHandler(handler.NewGraphHandler(graphService, store, store)))
+	mux.Handle(graphv1connect.NewGraphServiceHandler(graphHandler))
 	mux.Handle(graphv1connect.NewNodeServiceHandler(handler.NewNodeHandler(nodeService, store, store)))
+	mux.HandleFunc("GET /graph/subtree", graphHandler.GetSubtreeHTTP)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, `{"status":"ok"}`)
