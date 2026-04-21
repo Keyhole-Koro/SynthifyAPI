@@ -126,10 +126,9 @@ func (h *NodeHandler) RejectAlias(ctx context.Context, req *connect.Request[grap
 func toProtoNode(node *domain.Node) *graphv1.Node {
 	return &graphv1.Node{
 		Id:          node.NodeID,
-		DocumentId:  node.GraphID, // Use graph_id as the document identifier for backward compatibility.
 		Label:       node.Label,
-		Level:       0, // level does not exist in the graph model.
-		EntityType:  nodeEntityTypeToProto(node.EntityType),
+		Level:       int32(node.Level),
+		EntityType:  node.EntityType,
 		Description: node.Description,
 		SummaryHtml: node.SummaryHTML,
 		CreatedAt:   node.CreatedAt,
