@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
@@ -73,7 +74,7 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 		})
 	}
 	if s.dispatcher != nil {
-		if err := s.dispatcher.ExecuteApprovedPlan(context.Background(), worker.ExecutePlanRequest{
+		dispatchReq := worker.ExecutePlanRequest{
 			JobID:       job.JobID,
 			JobType:     job.JobType,
 			DocumentID:  documentID,
@@ -82,7 +83,18 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 			FileURI:     s.sourceURLGenerator(wsID, doc.DocumentID),
 			Filename:    doc.Filename,
 			MimeType:    doc.MimeType,
-		}); err != nil {
+		}
+		if err := s.dispatcher.GenerateExecutionPlan(context.Background(), dispatchReq); err != nil {
+			s.repo.FailProcessingJob(job.JobID, err.Error())
+			return job, nil
+		}
+		if err := s.dispatcher.ExecuteApprovedPlan(context.Background(), dispatchReq); err != nil {
+			if errors.Is(err, worker.ErrApprovalRequired) || errors.Is(err, worker.ErrPlanRejected) {
+				if latest, ok := s.repo.GetLatestProcessingJob(documentID); ok {
+					return latest, nil
+				}
+				return job, nil
+			}
 			s.repo.FailProcessingJob(job.JobID, err.Error())
 			if s.notifier != nil {
 				s.notifier.Failed(context.Background(), jobstatus.Payload{

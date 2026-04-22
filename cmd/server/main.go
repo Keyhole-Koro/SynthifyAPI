@@ -26,6 +26,7 @@ func main() {
 
 	workspaceService := service.NewWorkspaceService(store, store)
 	documentService := service.NewDocumentService(store, store, app.PublicUploadURLGenerator(cfg.InternalGCSUploadBase), dispatcher, notifier)
+	jobService := service.NewJobService(store)
 	graphService := service.NewGraphService(store)
 	nodeService := service.NewNodeService(store, store)
 
@@ -34,6 +35,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle(graphv1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService)))
 	mux.Handle(graphv1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.PublicUploadURLGenerator(cfg.GCSUploadURLBase))))
+	mux.Handle(graphv1connect.NewJobServiceHandler(handler.NewJobHandler(jobService, store, store)))
 	mux.Handle(graphv1connect.NewGraphServiceHandler(graphHandler))
 	mux.Handle(graphv1connect.NewNodeServiceHandler(handler.NewNodeHandler(nodeService, store, store)))
 	mux.HandleFunc("GET /graph/subtree", graphHandler.GetSubtreeHTTP)
