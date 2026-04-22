@@ -128,7 +128,6 @@ func toProtoNode(node *domain.Node) *graphv1.Node {
 		Id:          node.NodeID,
 		Label:       node.Label,
 		Level:       int32(node.Level),
-		EntityType:  node.EntityType,
 		Description: node.Description,
 		SummaryHtml: node.SummaryHTML,
 		CreatedAt:   node.CreatedAt,

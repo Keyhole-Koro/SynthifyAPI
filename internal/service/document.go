@@ -73,7 +73,7 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 		})
 	}
 	if s.dispatcher != nil {
-		if err := s.dispatcher.Dispatch(context.Background(), worker.DispatchRequest{
+		if err := s.dispatcher.ExecuteApprovedPlan(context.Background(), worker.ExecutePlanRequest{
 			JobID:       job.JobID,
 			JobType:     job.JobType,
 			DocumentID:  documentID,

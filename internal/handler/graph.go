@@ -95,7 +95,6 @@ func (h *GraphHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 		ID          string `json:"id"`
 		Label       string `json:"label"`
 		Level       int    `json:"level"`
-		EntityType  string `json:"entity_type,omitempty"`
 		Description string `json:"description"`
 		SummaryHTML string `json:"summary_html,omitempty"`
 		HasChildren bool   `json:"has_children"`
@@ -117,7 +116,6 @@ func (h *GraphHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 			ID:          n.NodeID,
 			Label:       n.Label,
 			Level:       n.Level,
-			EntityType:  n.EntityType,
 			Description: n.Description,
 			SummaryHTML: n.SummaryHTML,
 			HasChildren: n.HasChildren,
