@@ -39,17 +39,17 @@ func setupWorkspaceInStore(t *testing.T, store *mock.Store, userID string) strin
 	return ws.WorkspaceID
 }
 
-// setupNodeFixturesInStore creates workspace + graph + seed nodes in the store.
+// setupItemFixturesInStore creates workspace + tree + seed items in the store.
 // Returns workspaceID.
-func setupNodeFixturesInStore(t *testing.T, store *mock.Store, userID string) string {
+func setupItemFixturesInStore(t *testing.T, store *mock.Store, userID string) string {
 	t.Helper()
 	wsID := setupWorkspaceInStore(t, store, userID)
-	g, err := store.GetOrCreateGraph(wsID)
+	g, err := store.GetOrCreateTree(wsID)
 	if err != nil {
-		t.Fatalf("GetOrCreateGraph: %v", err)
+		t.Fatalf("GetOrCreateTree: %v", err)
 	}
 	doc, _ := store.CreateDocument(wsID, userID, "f.pdf", "application/pdf", 100)
-	store.CreateProcessingJob(doc.DocumentID, g.GraphID, "process_document")
+	store.CreateProcessingJob(doc.DocumentID, g.TreeID, "process_document")
 	return wsID
 }
 
@@ -146,31 +146,31 @@ func TestAuthorizeDocument_Member_ReturnsNil(t *testing.T) {
 	}
 }
 
-// ── authorizeNode ─────────────────────────────────────────────────────────────
+// ── authorizeItem ─────────────────────────────────────────────────────────────
 
-func TestAuthorizeNode_NodeNotFound_ReturnsNotFound(t *testing.T) {
+func TestAuthorizeItem_ItemNotFound_ReturnsNotFound(t *testing.T) {
 	store := mock.NewStore()
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "u1", Email: "u@example.com"})
 
-	err := authorizeNode(ctx, store, store, "nonexistent_node", "")
+	err := authorizeItem(ctx, store, store, "nonexistent_item", "")
 	assertConnectCode(t, err, connect.CodeNotFound)
 }
 
-func TestAuthorizeNode_ValidNode_AuthorizesViaWorkspace(t *testing.T) {
+func TestAuthorizeItem_ValidItem_AuthorizesViaWorkspace(t *testing.T) {
 	store := mock.NewStore()
-	wsID := setupNodeFixturesInStore(t, store, "owner")
+	wsID := setupItemFixturesInStore(t, store, "owner")
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
-	if err := authorizeNode(ctx, store, store, "nd_root", wsID); err != nil {
-		t.Errorf("authorizeNode: unexpected error: %v", err)
+	if err := authorizeItem(ctx, store, store, "nd_root", wsID); err != nil {
+		t.Errorf("authorizeItem: unexpected error: %v", err)
 	}
 }
 
-func TestAuthorizeNode_NotMember_ReturnsPermissionDenied(t *testing.T) {
+func TestAuthorizeItem_NotMember_ReturnsPermissionDenied(t *testing.T) {
 	store := mock.NewStore()
-	wsID := setupNodeFixturesInStore(t, store, "owner")
+	wsID := setupItemFixturesInStore(t, store, "owner")
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "stranger", Email: "s@example.com"})
 
-	err := authorizeNode(ctx, store, store, "nd_root", wsID)
+	err := authorizeItem(ctx, store, store, "nd_root", wsID)
 	assertConnectCode(t, err, connect.CodePermissionDenied)
 }

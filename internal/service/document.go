@@ -12,7 +12,7 @@ import (
 
 type DocumentService struct {
 	repo               repository.DocumentRepository
-	graph              repository.GraphRepository
+	tree              repository.TreeRepository
 	sourceURLGenerator repository.UploadURLGenerator
 	dispatcher         worker.Dispatcher
 	notifier           jobstatus.Notifier
@@ -20,14 +20,14 @@ type DocumentService struct {
 
 func NewDocumentService(
 	repo repository.DocumentRepository,
-	graph repository.GraphRepository,
+	tree repository.TreeRepository,
 	sourceURLGenerator repository.UploadURLGenerator,
 	dispatcher worker.Dispatcher,
 	notifier jobstatus.Notifier,
 ) *DocumentService {
 	return &DocumentService{
 		repo:               repo,
-		graph:              graph,
+		tree:              tree,
 		sourceURLGenerator: sourceURLGenerator,
 		dispatcher:         dispatcher,
 		notifier:           notifier,
@@ -56,11 +56,11 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 	if !ok {
 		return nil, ErrNotFound
 	}
-	graph, err := s.graph.GetOrCreateGraph(wsID)
+	tree, err := s.tree.GetOrCreateTree(wsID)
 	if err != nil {
 		return nil, err
 	}
-	job := s.repo.CreateProcessingJob(documentID, graph.GraphID, "process_document")
+	job := s.repo.CreateProcessingJob(documentID, tree.TreeID, "process_document")
 	if job == nil {
 		return nil, ErrNotFound
 	}
@@ -70,7 +70,7 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 			JobType:     job.JobType,
 			DocumentID:  documentID,
 			WorkspaceID: wsID,
-			GraphID:     graph.GraphID,
+			TreeID:     tree.TreeID,
 		})
 	}
 	if s.dispatcher != nil {
@@ -79,7 +79,7 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 			JobType:     job.JobType,
 			DocumentID:  documentID,
 			WorkspaceID: wsID,
-			GraphID:     graph.GraphID,
+			TreeID:     tree.TreeID,
 			FileURI:     s.sourceURLGenerator(wsID, doc.DocumentID),
 			Filename:    doc.Filename,
 			MimeType:    doc.MimeType,
@@ -102,7 +102,7 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 					JobType:     job.JobType,
 					DocumentID:  documentID,
 					WorkspaceID: wsID,
-					GraphID:     graph.GraphID,
+					TreeID:     tree.TreeID,
 				}, err.Error())
 			}
 			if latest, ok := s.repo.GetLatestProcessingJob(documentID); ok {

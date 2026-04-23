@@ -45,16 +45,16 @@ func authorizeDocument(
 	return authorizeWorkspace(ctx, workspaceRepo, doc.WorkspaceID)
 }
 
-func authorizeNode(
+func authorizeItem(
 	ctx context.Context,
 	workspaceRepo repository.WorkspaceRepository,
-	nodeRepo repository.NodeRepository,
-	nodeID string,
+	itemRepo repository.ItemRepository,
+	itemID string,
 	workspaceID string,
 ) error {
-	_, _, ok := nodeRepo.GetNode(nodeID)
+	_, _, ok := itemRepo.GetItem(itemID)
 	if !ok {
-		return connect.NewError(connect.CodeNotFound, errors.New("node not found"))
+		return connect.NewError(connect.CodeNotFound, errors.New("item not found"))
 	}
 	return authorizeWorkspace(ctx, workspaceRepo, workspaceID)
 }

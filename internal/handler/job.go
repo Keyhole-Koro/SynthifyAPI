@@ -6,7 +6,7 @@ import (
 
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	graphv1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/graph/v1"
+	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
 )
@@ -21,15 +21,15 @@ func NewJobHandler(svc *service.JobService, workspaceRepo repository.WorkspaceRe
 	return &JobHandler{service: svc, workspaces: workspaceRepo, documents: documentRepo}
 }
 
-func (h *JobHandler) GetJobStatus(ctx context.Context, req *connect.Request[graphv1.GetJobStatusRequest]) (*connect.Response[graphv1.GetJobStatusResponse], error) {
+func (h *JobHandler) GetJobStatus(ctx context.Context, req *connect.Request[treev1.GetJobStatusRequest]) (*connect.Response[treev1.GetJobStatusResponse], error) {
 	job, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId())
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&graphv1.GetJobStatusResponse{Job: toProtoJob(job)}), nil
+	return connect.NewResponse(&treev1.GetJobStatusResponse{Job: toProtoJob(job)}), nil
 }
 
-func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Request[graphv1.GetJobExecutionPlanRequest]) (*connect.Response[graphv1.GetJobExecutionPlanResponse], error) {
+func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Request[treev1.GetJobExecutionPlanRequest]) (*connect.Response[treev1.GetJobExecutionPlanResponse], error) {
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
@@ -37,8 +37,8 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&graphv1.GetJobExecutionPlanResponse{
-		Plan: &graphv1.JobExecutionPlan{
+	return connect.NewResponse(&treev1.GetJobExecutionPlanResponse{
+		Plan: &treev1.JobExecutionPlan{
 			PlanId:    plan.PlanID,
 			JobId:     plan.JobID,
 			Status:    plan.Status,
@@ -51,7 +51,7 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 	}), nil
 }
 
-func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.Request[graphv1.ListJobApprovalRequestsRequest]) (*connect.Response[graphv1.ListJobApprovalRequestsResponse], error) {
+func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.Request[treev1.ListJobApprovalRequestsRequest]) (*connect.Response[treev1.ListJobApprovalRequestsResponse], error) {
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
@@ -59,14 +59,14 @@ func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	res := connect.NewResponse(&graphv1.ListJobApprovalRequestsResponse{})
+	res := connect.NewResponse(&treev1.ListJobApprovalRequestsResponse{})
 	for _, request := range requests {
 		res.Msg.Requests = append(res.Msg.Requests, toProtoApprovalRequest(request))
 	}
 	return res, nil
 }
 
-func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Request[graphv1.RequestJobApprovalRequest]) (*connect.Response[graphv1.RequestJobApprovalResponse], error) {
+func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Request[treev1.RequestJobApprovalRequest]) (*connect.Response[treev1.RequestJobApprovalResponse], error) {
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
@@ -78,10 +78,10 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&graphv1.RequestJobApprovalResponse{Request: toProtoApprovalRequest(approval)}), nil
+	return connect.NewResponse(&treev1.RequestJobApprovalResponse{Request: toProtoApprovalRequest(approval)}), nil
 }
 
-func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Request[graphv1.ApproveJobApprovalRequest]) (*connect.Response[graphv1.ApproveJobApprovalResponse], error) {
+func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Request[treev1.ApproveJobApprovalRequest]) (*connect.Response[treev1.ApproveJobApprovalResponse], error) {
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
@@ -95,10 +95,10 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 	if err := h.service.ApproveApproval(req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&graphv1.ApproveJobApprovalResponse{Status: "approved"}), nil
+	return connect.NewResponse(&treev1.ApproveJobApprovalResponse{Status: "approved"}), nil
 }
 
-func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request[graphv1.RejectJobApprovalRequest]) (*connect.Response[graphv1.RejectJobApprovalResponse], error) {
+func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request[treev1.RejectJobApprovalRequest]) (*connect.Response[treev1.RejectJobApprovalResponse], error) {
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 	if err := h.service.RejectApproval(req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&graphv1.RejectJobApprovalResponse{Status: "rejected"}), nil
+	return connect.NewResponse(&treev1.RejectJobApprovalResponse{Status: "rejected"}), nil
 }
 
 func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, error) {
@@ -129,39 +129,31 @@ func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*do
 	return job, nil
 }
 
-func toProtoJob(job *domain.DocumentProcessingJob) *graphv1.Job {
+func toProtoJob(job *domain.DocumentProcessingJob) *treev1.Job {
 	if job == nil {
 		return nil
 	}
-	jobType := graphv1.JobType_JOB_TYPE_PROCESS_DOCUMENT
-	if job.JobType == "reprocess_document" {
-		jobType = graphv1.JobType_JOB_TYPE_REPROCESS_DOCUMENT
-	}
-	return &graphv1.Job{
+	return &treev1.Job{
 		JobId:        job.JobID,
 		DocumentId:   job.DocumentID,
-		Type:         jobType,
-		Status:       jobStatusToProto(job.Status),
+		Type:         job.JobType,
+		Status:       job.Status,
 		CreatedAt:    job.CreatedAt,
 		CompletedAt:  job.UpdatedAt,
 		ErrorMessage: job.ErrorMessage,
 	}
 }
 
-func toProtoApprovalRequest(req *domain.JobApprovalRequest) *graphv1.JobApprovalRequest {
+func toProtoApprovalRequest(req *domain.JobApprovalRequest) *treev1.JobApprovalRequest {
 	if req == nil {
 		return nil
 	}
-	ops := make([]string, 0, len(req.RequestedOperations))
-	for _, op := range req.RequestedOperations {
-		ops = append(ops, string(op))
-	}
-	return &graphv1.JobApprovalRequest{
+	return &treev1.JobApprovalRequest{
 		ApprovalId:          req.ApprovalID,
 		JobId:               req.JobID,
 		PlanId:              req.PlanID,
 		Status:              req.Status,
-		RequestedOperations: ops,
+		RequestedOperations: req.RequestedOperations,
 		Reason:              req.Reason,
 		RiskTier:            req.RiskTier,
 		RequestedBy:         req.RequestedBy,
