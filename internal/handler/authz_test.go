@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	connect "connectrpc.com/connect"
+	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
 )
@@ -49,7 +50,7 @@ func setupItemFixturesInStore(t *testing.T, store *mock.Store, userID string) st
 		t.Fatalf("GetOrCreateTree: %v", err)
 	}
 	doc, _ := store.CreateDocument(wsID, userID, "f.pdf", "application/pdf", 100)
-	store.CreateProcessingJob(doc.DocumentID, g.TreeID, "process_document")
+	store.CreateProcessingJob(doc.DocumentID, g.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	return wsID
 }
 

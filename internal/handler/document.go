@@ -121,7 +121,7 @@ func (h *DocumentHandler) StartProcessing(ctx context.Context, req *connect.Requ
 			JobId:      job.JobID,
 			DocumentId: job.DocumentID,
 			Type:       treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT,
-			Status:     jobStatusToProto(job.Status),
+			Status:     job.Status,
 		},
 	}), nil
 }

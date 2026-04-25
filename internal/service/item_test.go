@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"testing"
 
 	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"

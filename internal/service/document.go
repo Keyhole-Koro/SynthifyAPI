@@ -5,16 +5,22 @@ import (
 	"errors"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/worker/pkg/worker"
 )
 
+type WorkerDispatcher interface {
+	GenerateExecutionPlan(ctx context.Context, req worker.ExecutePlanRequest) error
+	ExecuteApprovedPlan(ctx context.Context, req worker.ExecutePlanRequest) error
+}
+
 type DocumentService struct {
 	repo               repository.DocumentRepository
-	tree              repository.TreeRepository
+	tree               repository.TreeRepository
 	sourceURLGenerator repository.UploadURLGenerator
-	dispatcher         worker.Dispatcher
+	dispatcher         WorkerDispatcher
 	notifier           jobstatus.Notifier
 }
 
@@ -22,12 +28,12 @@ func NewDocumentService(
 	repo repository.DocumentRepository,
 	tree repository.TreeRepository,
 	sourceURLGenerator repository.UploadURLGenerator,
-	dispatcher worker.Dispatcher,
+	dispatcher WorkerDispatcher,
 	notifier jobstatus.Notifier,
 ) *DocumentService {
 	return &DocumentService{
 		repo:               repo,
-		tree:              tree,
+		tree:               tree,
 		sourceURLGenerator: sourceURLGenerator,
 		dispatcher:         dispatcher,
 		notifier:           notifier,
@@ -60,26 +66,26 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 	if err != nil {
 		return nil, err
 	}
-	job := s.repo.CreateProcessingJob(documentID, tree.TreeID, "process_document")
+	job := s.repo.CreateProcessingJob(documentID, tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	if job == nil {
 		return nil, ErrNotFound
 	}
 	if s.notifier != nil {
 		s.notifier.Queued(context.Background(), jobstatus.Payload{
 			JobID:       job.JobID,
-			JobType:     job.JobType,
+			JobType:     job.JobType.String(),
 			DocumentID:  documentID,
 			WorkspaceID: wsID,
-			TreeID:     tree.TreeID,
+			TreeID:      tree.TreeID,
 		})
 	}
 	if s.dispatcher != nil {
 		dispatchReq := worker.ExecutePlanRequest{
 			JobID:       job.JobID,
-			JobType:     job.JobType,
+			JobType:     job.JobType.String(),
 			DocumentID:  documentID,
 			WorkspaceID: wsID,
-			TreeID:     tree.TreeID,
+			TreeID:      tree.TreeID,
 			FileURI:     s.sourceURLGenerator(wsID, doc.DocumentID),
 			Filename:    doc.Filename,
 			MimeType:    doc.MimeType,
@@ -99,10 +105,10 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 			if s.notifier != nil {
 				s.notifier.Failed(context.Background(), jobstatus.Payload{
 					JobID:       job.JobID,
-					JobType:     job.JobType,
+					JobType:     job.JobType.String(),
 					DocumentID:  documentID,
 					WorkspaceID: wsID,
-					TreeID:     tree.TreeID,
+					TreeID:      tree.TreeID,
 				}, err.Error())
 			}
 			if latest, ok := s.repo.GetLatestProcessingJob(documentID); ok {

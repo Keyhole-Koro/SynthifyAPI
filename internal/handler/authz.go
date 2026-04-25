@@ -52,7 +52,7 @@ func authorizeItem(
 	itemID string,
 	workspaceID string,
 ) error {
-	_, _, ok := itemRepo.GetItem(itemID)
+	_, ok := itemRepo.GetItem(itemID)
 	if !ok {
 		return connect.NewError(connect.CodeNotFound, errors.New("item not found"))
 	}

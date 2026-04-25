@@ -23,8 +23,7 @@ func (s *ItemService) GetTreeEntityDetail(itemID string) (*domain.Item, error) {
 }
 
 func (s *ItemService) CreateItem(workspaceID, label, description, parentID, createdBy string) (*domain.Item, error) {
-	tree, err := s.tree.GetOrCreateTree(workspaceID)
-	if err != nil {
+	if _, err := s.tree.GetOrCreateTree(workspaceID); err != nil {
 		return nil, err
 	}
 	item := s.repo.CreateItem(workspaceID, label, description, parentID, createdBy)
