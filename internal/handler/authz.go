@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log"
 
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
@@ -11,7 +12,12 @@ import (
 
 func currentUser(ctx context.Context) (middleware.AuthUser, error) {
 	user, ok := middleware.CurrentUser(ctx)
-	if !ok || user.ID == "" {
+	if !ok {
+		log.Printf("currentUser: user not found in context")
+		return middleware.AuthUser{}, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+	if user.ID == "" {
+		log.Printf("currentUser: user ID is empty in context")
 		return middleware.AuthUser{}, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 	return user, nil

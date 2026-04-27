@@ -115,6 +115,34 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 	return connect.NewResponse(&treev1.RejectJobApprovalResponse{Status: "rejected"}), nil
 }
 
+func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Request[treev1.ListJobMutationLogsRequest]) (*connect.Response[treev1.ListJobMutationLogsResponse], error) {
+	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
+		return nil, err
+	}
+	logs, err := h.service.ListMutationLogs(req.Msg.GetJobId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	res := connect.NewResponse(&treev1.ListJobMutationLogsResponse{})
+	for _, log := range logs {
+		res.Msg.Logs = append(res.Msg.Logs, toProtoMutationLog(log))
+	}
+	return res, nil
+}
+
+func (h *JobHandler) ListAllJobs(ctx context.Context, _ *connect.Request[treev1.ListAllJobsRequest]) (*connect.Response[treev1.ListAllJobsResponse], error) {
+	// TODO: Add global admin authorization check here
+	jobs, err := h.service.ListAllJobs()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	res := connect.NewResponse(&treev1.ListAllJobsResponse{})
+	for _, job := range jobs {
+		res.Msg.Jobs = append(res.Msg.Jobs, toProtoJob(job))
+	}
+	return res, nil
+}
+
 func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, error) {
 	if jobID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
@@ -160,5 +188,23 @@ func toProtoApprovalRequest(req *domain.JobApprovalRequest) *treev1.JobApprovalR
 		ReviewedBy:          req.ReviewedBy,
 		RequestedAt:         req.RequestedAt,
 		ReviewedAt:          req.ReviewedAt,
+	}
+}
+
+func toProtoMutationLog(log *domain.JobMutationLog) *treev1.JobMutationLog {
+	if log == nil {
+		return nil
+	}
+	return &treev1.JobMutationLog{
+		MutationId:     log.MutationID,
+		JobId:          log.JobID,
+		TargetType:     log.TargetType,
+		TargetId:       log.TargetID,
+		MutationType:   log.MutationType,
+		RiskTier:       log.RiskTier,
+		BeforeJson:     log.BeforeJSON,
+		AfterJson:      log.AfterJSON,
+		ProvenanceJson: log.ProvenanceJSON,
+		CreatedAt:      log.CreatedAt,
 	}
 }

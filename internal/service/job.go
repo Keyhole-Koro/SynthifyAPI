@@ -37,6 +37,22 @@ func (s *JobService) ListApprovalRequests(jobID string) ([]*domain.JobApprovalRe
 	return requests, nil
 }
 
+func (s *JobService) ListMutationLogs(jobID string) ([]*domain.JobMutationLog, error) {
+	logs, ok := s.repo.ListJobMutationLogs(jobID)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return logs, nil
+}
+
+func (s *JobService) ListAllJobs() ([]*domain.DocumentProcessingJob, error) {
+	jobs, ok := s.repo.ListAllJobs()
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return jobs, nil
+}
+
 func (s *JobService) RequestApproval(jobID, requestedBy, reason string) (*domain.JobApprovalRequest, error) {
 	req, ok := s.repo.RequestJobApproval(jobID, requestedBy, reason)
 	if !ok {
