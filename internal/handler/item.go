@@ -37,7 +37,7 @@ func (h *ItemHandler) GetTreeEntityDetail(ctx context.Context, req *connect.Requ
 		return nil, err
 	}
 
-	item, err := h.service.GetTreeEntityDetail(req.Msg.GetTargetRef().GetId())
+	item, err := h.service.GetTreeEntityDetail(ctx, req.Msg.GetTargetRef().GetId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -72,7 +72,7 @@ func (h *ItemHandler) CreateItem(ctx context.Context, req *connect.Request[treev
 	if err != nil {
 		return nil, err
 	}
-	item, err := h.service.CreateItem(req.Msg.GetWorkspaceId(), req.Msg.GetLabel(), req.Msg.GetDescription(), req.Msg.GetParentId(), user.ID)
+	item, err := h.service.CreateItem(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetLabel(), req.Msg.GetDescription(), req.Msg.GetParentId(), user.ID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -93,7 +93,7 @@ func (h *ItemHandler) ApproveAlias(ctx context.Context, req *connect.Request[tre
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	if err := h.service.ApproveAlias(req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
+	if err := h.service.ApproveAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&treev1.ApproveAliasResponse{
@@ -110,7 +110,7 @@ func (h *ItemHandler) RejectAlias(ctx context.Context, req *connect.Request[tree
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	if err := h.service.RejectAlias(req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
+	if err := h.service.RejectAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&treev1.RejectAliasResponse{

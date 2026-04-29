@@ -40,38 +40,38 @@ func NewDocumentService(
 	}
 }
 
-func (s *DocumentService) ListDocuments(workspaceID string) []*domain.Document {
-	return s.repo.ListDocuments(workspaceID)
+func (s *DocumentService) ListDocuments(ctx context.Context, workspaceID string) []*domain.Document {
+	return s.repo.ListDocuments(ctx, workspaceID)
 }
 
-func (s *DocumentService) GetDocument(documentID string) (*domain.Document, error) {
-	doc, ok := s.repo.GetDocument(documentID)
+func (s *DocumentService) GetDocument(ctx context.Context, documentID string) (*domain.Document, error) {
+	doc, ok := s.repo.GetDocument(ctx, documentID)
 	if !ok {
 		return nil, ErrNotFound
 	}
 	return doc, nil
 }
 
-func (s *DocumentService) CreateDocument(wsID, uploadedBy, filename, mimeType string, fileSize int64) (*domain.Document, string) {
-	return s.repo.CreateDocument(wsID, uploadedBy, filename, mimeType, fileSize)
+func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, filename, mimeType string, fileSize int64) (*domain.Document, string) {
+	return s.repo.CreateDocument(ctx, wsID, uploadedBy, filename, mimeType, fileSize)
 }
 
-func (s *DocumentService) StartProcessing(wsID, documentID string, forceReprocess bool) (*domain.DocumentProcessingJob, error) {
+func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID string, forceReprocess bool) (*domain.DocumentProcessingJob, error) {
 	_ = forceReprocess
-	doc, ok := s.repo.GetDocument(documentID)
+	doc, ok := s.repo.GetDocument(ctx, documentID)
 	if !ok {
 		return nil, ErrNotFound
 	}
-	tree, err := s.tree.GetOrCreateTree(wsID)
+	tree, err := s.tree.GetOrCreateTree(ctx, wsID)
 	if err != nil {
 		return nil, err
 	}
-	job := s.repo.CreateProcessingJob(documentID, tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
+	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	if job == nil {
 		return nil, ErrNotFound
 	}
 	if s.notifier != nil {
-		s.notifier.Queued(context.Background(), jobstatus.Payload{
+		s.notifier.Queued(ctx, jobstatus.Payload{
 			JobID:       job.JobID,
 			JobType:     job.JobType.String(),
 			DocumentID:  documentID,
@@ -90,20 +90,20 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 			Filename:    doc.Filename,
 			MimeType:    doc.MimeType,
 		}
-		if err := s.dispatcher.GenerateExecutionPlan(context.Background(), dispatchReq); err != nil {
-			s.repo.FailProcessingJob(job.JobID, err.Error())
+		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
+			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			return job, nil
 		}
-		if err := s.dispatcher.ExecuteApprovedPlan(context.Background(), dispatchReq); err != nil {
+		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
 			if errors.Is(err, worker.ErrApprovalRequired) || errors.Is(err, worker.ErrPlanRejected) {
-				if latest, ok := s.repo.GetLatestProcessingJob(documentID); ok {
+				if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
 					return latest, nil
 				}
 				return job, nil
 			}
-			s.repo.FailProcessingJob(job.JobID, err.Error())
+			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
-				s.notifier.Failed(context.Background(), jobstatus.Payload{
+				s.notifier.Failed(ctx, jobstatus.Payload{
 					JobID:       job.JobID,
 					JobType:     job.JobType.String(),
 					DocumentID:  documentID,
@@ -111,20 +111,20 @@ func (s *DocumentService) StartProcessing(wsID, documentID string, forceReproces
 					TreeID:      tree.TreeID,
 				}, err.Error())
 			}
-			if latest, ok := s.repo.GetLatestProcessingJob(documentID); ok {
+			if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
 				return latest, nil
 			}
 			return job, nil
 		}
 	}
-	if latest, ok := s.repo.GetLatestProcessingJob(documentID); ok {
+	if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
 		job = latest
 	}
 	return job, nil
 }
 
-func (s *DocumentService) GetLatestProcessingJob(documentID string) (*domain.DocumentProcessingJob, error) {
-	job, ok := s.repo.GetLatestProcessingJob(documentID)
+func (s *DocumentService) GetLatestProcessingJob(ctx context.Context, documentID string) (*domain.DocumentProcessingJob, error) {
+	job, ok := s.repo.GetLatestProcessingJob(ctx, documentID)
 	if !ok {
 		return nil, ErrNotFound
 	}

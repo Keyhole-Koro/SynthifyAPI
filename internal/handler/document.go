@@ -40,7 +40,7 @@ func (h *DocumentHandler) ListDocuments(ctx context.Context, req *connect.Reques
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	docs := h.service.ListDocuments(req.Msg.GetWorkspaceId())
+	docs := h.service.ListDocuments(ctx, req.Msg.GetWorkspaceId())
 	res := connect.NewResponse(&treev1.ListDocumentsResponse{})
 	for _, doc := range docs {
 		res.Msg.Documents = append(res.Msg.Documents, toProtoDocument(doc))
@@ -55,7 +55,7 @@ func (h *DocumentHandler) GetDocument(ctx context.Context, req *connect.Request[
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, req.Msg.GetDocumentId(), ""); err != nil {
 		return nil, err
 	}
-	doc, err := h.service.GetDocument(req.Msg.GetDocumentId())
+	doc, err := h.service.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -73,7 +73,7 @@ func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Reque
 	if err != nil {
 		return nil, err
 	}
-	doc, uploadURL := h.service.CreateDocument(req.Msg.GetWorkspaceId(), user.ID, req.Msg.GetFilename(), req.Msg.GetMimeType(), req.Msg.GetFileSize())
+	doc, uploadURL := h.service.CreateDocument(ctx, req.Msg.GetWorkspaceId(), user.ID, req.Msg.GetFilename(), req.Msg.GetMimeType(), req.Msg.GetFileSize())
 	return connect.NewResponse(&treev1.CreateDocumentResponse{
 		Document:          toProtoDocument(doc),
 		UploadUrl:         uploadURL,
@@ -107,11 +107,11 @@ func (h *DocumentHandler) StartProcessing(ctx context.Context, req *connect.Requ
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, req.Msg.GetDocumentId(), ""); err != nil {
 		return nil, err
 	}
-	doc, ok := h.documents.GetDocument(req.Msg.GetDocumentId())
+	doc, ok := h.documents.GetDocument(ctx, req.Msg.GetDocumentId())
 	if !ok {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("document not found"))
 	}
-	job, err := h.service.StartProcessing(doc.WorkspaceID, req.Msg.GetDocumentId(), req.Msg.GetForceReprocess())
+	job, err := h.service.StartProcessing(ctx, doc.WorkspaceID, req.Msg.GetDocumentId(), req.Msg.GetForceReprocess())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -133,7 +133,7 @@ func (h *DocumentHandler) ResumeProcessing(ctx context.Context, req *connect.Req
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, req.Msg.GetDocumentId(), ""); err != nil {
 		return nil, err
 	}
-	doc, err := h.service.GetDocument(req.Msg.GetDocumentId())
+	doc, err := h.service.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
@@ -18,27 +19,27 @@ func NewWorkspaceService(accounts repository.AccountRepository, workspaces repos
 	return &WorkspaceService{accounts: accounts, workspaces: workspaces}
 }
 
-func (s *WorkspaceService) ListWorkspaces(userID string) []*domain.Workspace {
-	return s.workspaces.ListWorkspacesByUser(userID)
+func (s *WorkspaceService) ListWorkspaces(ctx context.Context, userID string) []*domain.Workspace {
+	return s.workspaces.ListWorkspacesByUser(ctx, userID)
 }
 
-func (s *WorkspaceService) GetWorkspace(id, userID string) (*domain.Workspace, error) {
-	if !s.workspaces.IsWorkspaceAccessible(id, userID) {
+func (s *WorkspaceService) GetWorkspace(ctx context.Context, id, userID string) (*domain.Workspace, error) {
+	if !s.workspaces.IsWorkspaceAccessible(ctx, id, userID) {
 		return nil, ErrNotFound
 	}
-	ws, ok := s.workspaces.GetWorkspace(id)
+	ws, ok := s.workspaces.GetWorkspace(ctx, id)
 	if !ok {
 		return nil, ErrNotFound
 	}
 	return ws, nil
 }
 
-func (s *WorkspaceService) CreateWorkspace(name, userID string) (*domain.Workspace, error) {
-	account, err := s.accounts.GetOrCreateAccount(userID)
+func (s *WorkspaceService) CreateWorkspace(ctx context.Context, name, userID string) (*domain.Workspace, error) {
+	account, err := s.accounts.GetOrCreateAccount(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	ws := s.workspaces.CreateWorkspace(account.AccountID, name)
+	ws := s.workspaces.CreateWorkspace(ctx, account.AccountID, name)
 	if ws == nil {
 		return nil, errors.New("failed to create workspace")
 	}

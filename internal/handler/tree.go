@@ -38,7 +38,7 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	items, err := h.service.GetTreeByWorkspace(req.Msg.GetWorkspaceId())
+	items, err := h.service.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -72,12 +72,12 @@ func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	if !h.workspaces.IsWorkspaceAccessible(workspaceID, user.ID) {
+	if !h.workspaces.IsWorkspaceAccessible(r.Context(), workspaceID, user.ID) {
 		writeError(w, http.StatusForbidden, "workspace access denied")
 		return
 	}
 
-	items, err := h.service.GetSubtree(itemID, maxDepth)
+	items, err := h.service.GetSubtree(r.Context(), itemID, maxDepth)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to get subtree")
 		return
@@ -121,12 +121,12 @@ func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1
 		return nil, err
 	}
 
-	tree, err := h.service.GetOrCreateTree(req.Msg.GetWorkspaceId())
+	tree, err := h.service.GetOrCreateTree(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 
-	items, paths, err := h.service.FindPaths(tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
+	items, paths, err := h.service.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}

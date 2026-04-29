@@ -33,7 +33,7 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
-	plan, err := h.service.GetExecutionPlan(req.Msg.GetJobId())
+	plan, err := h.service.GetExecutionPlan(ctx, req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -55,7 +55,7 @@ func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.R
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
-	requests, err := h.service.ListApprovalRequests(req.Msg.GetJobId())
+	requests, err := h.service.ListApprovalRequests(ctx, req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -74,7 +74,7 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, err
 	}
-	approval, err := h.service.RequestApproval(req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
+	approval, err := h.service.RequestApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -92,7 +92,7 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 	if req.Msg.GetApprovalId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
-	if err := h.service.ApproveApproval(req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
+	if err := h.service.ApproveApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&treev1.ApproveJobApprovalResponse{Status: "approved"}), nil
@@ -109,7 +109,7 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 	if req.Msg.GetApprovalId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
-	if err := h.service.RejectApproval(req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
+	if err := h.service.RejectApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&treev1.RejectJobApprovalResponse{Status: "rejected"}), nil
@@ -119,7 +119,7 @@ func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Reque
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
-	logs, err := h.service.ListMutationLogs(req.Msg.GetJobId())
+	logs, err := h.service.ListMutationLogs(ctx, req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -132,7 +132,7 @@ func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Reque
 
 func (h *JobHandler) ListAllJobs(ctx context.Context, _ *connect.Request[treev1.ListAllJobsRequest]) (*connect.Response[treev1.ListAllJobsResponse], error) {
 	// TODO: Add global admin authorization check here
-	jobs, err := h.service.ListAllJobs()
+	jobs, err := h.service.ListAllJobs(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -147,7 +147,7 @@ func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*do
 	if jobID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
 	}
-	job, err := h.service.GetJob(jobID)
+	job, err := h.service.GetJob(ctx, jobID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}

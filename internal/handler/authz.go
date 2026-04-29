@@ -28,7 +28,7 @@ func authorizeWorkspace(ctx context.Context, repo repository.WorkspaceRepository
 	if err != nil {
 		return err
 	}
-	if !repo.IsWorkspaceAccessible(workspaceID, user.ID) {
+	if !repo.IsWorkspaceAccessible(ctx, workspaceID, user.ID) {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("workspace access denied"))
 	}
 	return nil
@@ -41,7 +41,7 @@ func authorizeDocument(
 	documentID string,
 	expectedWorkspaceID string,
 ) error {
-	doc, ok := documentRepo.GetDocument(documentID)
+	doc, ok := documentRepo.GetDocument(ctx, documentID)
 	if !ok {
 		return connect.NewError(connect.CodeNotFound, errors.New("document not found"))
 	}
@@ -58,7 +58,7 @@ func authorizeItem(
 	itemID string,
 	workspaceID string,
 ) error {
-	_, ok := itemRepo.GetItem(itemID)
+	_, ok := itemRepo.GetItem(ctx, itemID)
 	if !ok {
 		return connect.NewError(connect.CodeNotFound, errors.New("item not found"))
 	}

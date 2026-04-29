@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
@@ -18,11 +19,12 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetTreeEntityDetail_ExistingItem_ReturnsItem(t *testing.T) {
+	ctx := context.Background()
 	wsID := "ws-1"
-	repo.CreateWorkspace("acct-1", "Test")
-	repo.CreateItem(wsID, "root", "root desc", "", "system")
+	repo.CreateWorkspace(ctx, "acct-1", "Test")
+	repo.CreateItem(ctx, wsID, "root", "root desc", "", "system")
 
-	item, err := svc.GetTreeEntityDetail("item-root")
+	item, err := svc.GetTreeEntityDetail(ctx, "item-root")
 	if err != nil {
 		t.Fatalf("GetTreeEntityDetail: %v", err)
 	}
@@ -32,8 +34,9 @@ func TestGetTreeEntityDetail_ExistingItem_ReturnsItem(t *testing.T) {
 }
 
 func TestApproveAlias_CallsRepo(t *testing.T) {
+	ctx := context.Background()
 	wsID := "ws-1"
-	err := svc.ApproveAlias(wsID, "n1", "n2")
+	err := svc.ApproveAlias(ctx, wsID, "n1", "n2")
 	if err != nil {
 		t.Errorf("ApproveAlias: %v", err)
 	}

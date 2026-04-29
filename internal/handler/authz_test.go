@@ -29,11 +29,12 @@ func assertConnectCode(t *testing.T, err error, want connect.Code) {
 // setupWorkspaceInStore creates an account and workspace for a given userID.
 func setupWorkspaceInStore(t *testing.T, store *mock.Store, userID string) string {
 	t.Helper()
-	acct, err := store.GetOrCreateAccount(userID)
+	ctx := context.Background()
+	acct, err := store.GetOrCreateAccount(ctx, userID)
 	if err != nil {
 		t.Fatalf("GetOrCreateAccount: %v", err)
 	}
-	ws := store.CreateWorkspace(acct.AccountID, "test-workspace")
+	ws := store.CreateWorkspace(ctx, acct.AccountID, "test-workspace")
 	if ws == nil {
 		t.Fatal("CreateWorkspace returned nil")
 	}
@@ -44,13 +45,14 @@ func setupWorkspaceInStore(t *testing.T, store *mock.Store, userID string) strin
 // Returns workspaceID.
 func setupItemFixturesInStore(t *testing.T, store *mock.Store, userID string) string {
 	t.Helper()
+	ctx := context.Background()
 	wsID := setupWorkspaceInStore(t, store, userID)
-	g, err := store.GetOrCreateTree(wsID)
+	g, err := store.GetOrCreateTree(ctx, wsID)
 	if err != nil {
 		t.Fatalf("GetOrCreateTree: %v", err)
 	}
-	doc, _ := store.CreateDocument(wsID, userID, "f.pdf", "application/pdf", 100)
-	store.CreateProcessingJob(doc.DocumentID, g.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
+	doc, _ := store.CreateDocument(ctx, wsID, userID, "f.pdf", "application/pdf", 100)
+	store.CreateProcessingJob(ctx, doc.DocumentID, g.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	return wsID
 }
 
@@ -116,33 +118,36 @@ func TestAuthorizeDocument_DocumentNotFound_ReturnsNotFound(t *testing.T) {
 }
 
 func TestAuthorizeDocument_WrongWorkspace_ReturnsPermissionDenied(t *testing.T) {
+	ctx := context.Background()
 	store := mock.NewStore()
 	ws1ID := setupWorkspaceInStore(t, store, "owner")
 	ws2ID := setupWorkspaceInStore(t, store, "owner2")
-	doc, _ := store.CreateDocument(ws1ID, "owner", "f.pdf", "application/pdf", 100)
-	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "owner", Email: "o@example.com"})
+	doc, _ := store.CreateDocument(ctx, ws1ID, "owner", "f.pdf", "application/pdf", 100)
+	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
-	err := authorizeDocument(ctx, store, store, doc.DocumentID, ws2ID)
+	err := authorizeDocument(authedCtx, store, store, doc.DocumentID, ws2ID)
 	assertConnectCode(t, err, connect.CodePermissionDenied)
 }
 
 func TestAuthorizeDocument_NotMember_ReturnsPermissionDenied(t *testing.T) {
+	ctx := context.Background()
 	store := mock.NewStore()
 	wsID := setupWorkspaceInStore(t, store, "owner")
-	doc, _ := store.CreateDocument(wsID, "owner", "f.pdf", "application/pdf", 100)
-	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "stranger", Email: "s@example.com"})
+	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
+	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "stranger", Email: "s@example.com"})
 
-	err := authorizeDocument(ctx, store, store, doc.DocumentID, "")
+	err := authorizeDocument(authedCtx, store, store, doc.DocumentID, "")
 	assertConnectCode(t, err, connect.CodePermissionDenied)
 }
 
 func TestAuthorizeDocument_Member_ReturnsNil(t *testing.T) {
+	ctx := context.Background()
 	store := mock.NewStore()
 	wsID := setupWorkspaceInStore(t, store, "owner")
-	doc, _ := store.CreateDocument(wsID, "owner", "f.pdf", "application/pdf", 100)
-	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "owner", Email: "o@example.com"})
+	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
+	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
-	if err := authorizeDocument(ctx, store, store, doc.DocumentID, ""); err != nil {
+	if err := authorizeDocument(authedCtx, store, store, doc.DocumentID, ""); err != nil {
 		t.Errorf("authorizeDocument: unexpected error: %v", err)
 	}
 }

@@ -23,7 +23,7 @@ func (h *WorkspaceHandler) ListWorkspaces(ctx context.Context, _ *connect.Reques
 	if err != nil {
 		return nil, err
 	}
-	workspaces := h.service.ListWorkspaces(user.ID)
+	workspaces := h.service.ListWorkspaces(ctx, user.ID)
 	res := connect.NewResponse(&treev1.ListWorkspacesResponse{})
 	for _, workspace := range workspaces {
 		res.Msg.Workspaces = append(res.Msg.Workspaces, toProtoWorkspace(workspace))
@@ -39,7 +39,7 @@ func (h *WorkspaceHandler) GetWorkspace(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, err
 	}
-	workspace, err := h.service.GetWorkspace(req.Msg.GetWorkspaceId(), user.ID)
+	workspace, err := h.service.GetWorkspace(ctx, req.Msg.GetWorkspaceId(), user.ID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodePermissionDenied, err)
 	}
@@ -56,7 +56,7 @@ func (h *WorkspaceHandler) CreateWorkspace(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, err
 	}
-	ws, err := h.service.CreateWorkspace(req.Msg.GetName(), user.ID)
+	ws, err := h.service.CreateWorkspace(ctx, req.Msg.GetName(), user.ID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
