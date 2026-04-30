@@ -54,7 +54,7 @@ func main() {
 
 func initDispatcher(cfg config.API) service.WorkerDispatcher {
 	if cfg.WorkerBaseURL != "" {
-		return worker.NewHTTPDispatcher(cfg.WorkerBaseURL, cfg.InternalWorkerToken)
+		return worker.NewHTTPDispatcher(cfg.WorkerBaseURL)
 	}
 	return nil
 }
