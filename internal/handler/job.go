@@ -7,6 +7,7 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
 )
@@ -26,7 +27,7 @@ func (h *JobHandler) GetJobStatus(ctx context.Context, req *connect.Request[tree
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&treev1.GetJobStatusResponse{Job: toProtoJob(job)}), nil
+	return connect.NewResponse(&treev1.GetJobStatusResponse{Job: mappers.ToProtoJob(job)}), nil
 }
 
 func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Request[treev1.GetJobExecutionPlanRequest]) (*connect.Response[treev1.GetJobExecutionPlanResponse], error) {
@@ -38,16 +39,7 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&treev1.GetJobExecutionPlanResponse{
-		Plan: &treev1.JobExecutionPlan{
-			PlanId:    plan.PlanID,
-			JobId:     plan.JobID,
-			Status:    plan.Status,
-			Summary:   plan.Summary,
-			PlanJson:  plan.PlanJSON,
-			CreatedBy: plan.CreatedBy,
-			CreatedAt: plan.CreatedAt,
-			UpdatedAt: plan.UpdatedAt,
-		},
+		Plan: mappers.ToProtoExecutionPlan(plan),
 	}), nil
 }
 
@@ -61,7 +53,7 @@ func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.R
 	}
 	res := connect.NewResponse(&treev1.ListJobApprovalRequestsResponse{})
 	for _, request := range requests {
-		res.Msg.Requests = append(res.Msg.Requests, toProtoApprovalRequest(request))
+		res.Msg.Requests = append(res.Msg.Requests, mappers.ToProtoApprovalRequest(request))
 	}
 	return res, nil
 }
@@ -78,7 +70,7 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&treev1.RequestJobApprovalResponse{Request: toProtoApprovalRequest(approval)}), nil
+	return connect.NewResponse(&treev1.RequestJobApprovalResponse{Request: mappers.ToProtoApprovalRequest(approval)}), nil
 }
 
 func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Request[treev1.ApproveJobApprovalRequest]) (*connect.Response[treev1.ApproveJobApprovalResponse], error) {
@@ -125,7 +117,7 @@ func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Reque
 	}
 	res := connect.NewResponse(&treev1.ListJobMutationLogsResponse{})
 	for _, log := range logs {
-		res.Msg.Logs = append(res.Msg.Logs, toProtoMutationLog(log))
+		res.Msg.Logs = append(res.Msg.Logs, mappers.ToProtoMutationLog(log))
 	}
 	return res, nil
 }
@@ -138,10 +130,11 @@ func (h *JobHandler) ListAllJobs(ctx context.Context, _ *connect.Request[treev1.
 	}
 	res := connect.NewResponse(&treev1.ListAllJobsResponse{})
 	for _, job := range jobs {
-		res.Msg.Jobs = append(res.Msg.Jobs, toProtoJob(job))
+		res.Msg.Jobs = append(res.Msg.Jobs, mappers.ToProtoJob(job))
 	}
 	return res, nil
 }
+
 
 func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, error) {
 	if jobID == "" {
@@ -155,56 +148,4 @@ func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*do
 		return nil, err
 	}
 	return job, nil
-}
-
-func toProtoJob(job *domain.DocumentProcessingJob) *treev1.Job {
-	if job == nil {
-		return nil
-	}
-	return &treev1.Job{
-		JobId:        job.JobID,
-		DocumentId:   job.DocumentID,
-		Type:         job.JobType,
-		Status:       job.Status,
-		CreatedAt:    job.CreatedAt,
-		CompletedAt:  job.UpdatedAt,
-		ErrorMessage: job.ErrorMessage,
-	}
-}
-
-func toProtoApprovalRequest(req *domain.JobApprovalRequest) *treev1.JobApprovalRequest {
-	if req == nil {
-		return nil
-	}
-	return &treev1.JobApprovalRequest{
-		ApprovalId:          req.ApprovalID,
-		JobId:               req.JobID,
-		PlanId:              req.PlanID,
-		Status:              req.Status,
-		RequestedOperations: req.RequestedOperations,
-		Reason:              req.Reason,
-		RiskTier:            req.RiskTier,
-		RequestedBy:         req.RequestedBy,
-		ReviewedBy:          req.ReviewedBy,
-		RequestedAt:         req.RequestedAt,
-		ReviewedAt:          req.ReviewedAt,
-	}
-}
-
-func toProtoMutationLog(log *domain.JobMutationLog) *treev1.JobMutationLog {
-	if log == nil {
-		return nil
-	}
-	return &treev1.JobMutationLog{
-		MutationId:     log.MutationID,
-		JobId:          log.JobID,
-		TargetType:     log.TargetType,
-		TargetId:       log.TargetID,
-		MutationType:   log.MutationType,
-		RiskTier:       log.RiskTier,
-		BeforeJson:     log.BeforeJSON,
-		AfterJson:      log.AfterJSON,
-		ProvenanceJson: log.ProvenanceJSON,
-		CreatedAt:      log.CreatedAt,
-	}
 }

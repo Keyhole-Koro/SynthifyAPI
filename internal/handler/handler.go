@@ -1,27 +1,19 @@
 package handler
 
 import (
-	"encoding/json"
-	"log"
 	"net/http"
+
+	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 )
 
 func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("writeJSON error: %v", err)
-	}
+	handlerutil.WriteJSON(w, v)
 }
 
 func writeError(w http.ResponseWriter, code int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
-		"code":    http.StatusText(code),
-		"message": msg,
-	})
+	handlerutil.WriteError(w, code, msg)
 }
 
 func decodeBody(r *http.Request, v any) error {
-	return json.NewDecoder(r.Body).Decode(v)
+	return handlerutil.DecodeBody(r, v)
 }

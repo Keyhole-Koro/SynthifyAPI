@@ -8,12 +8,11 @@ import (
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
-	"github.com/synthify/backend/worker/pkg/worker"
 )
 
 type WorkerDispatcher interface {
-	GenerateExecutionPlan(ctx context.Context, req worker.ExecutePlanRequest) error
-	ExecuteApprovedPlan(ctx context.Context, req worker.ExecutePlanRequest) error
+	GenerateExecutionPlan(ctx context.Context, req domain.ExecutePlanRequest) error
+	ExecuteApprovedPlan(ctx context.Context, req domain.ExecutePlanRequest) error
 }
 
 type DocumentService struct {
@@ -80,7 +79,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 		})
 	}
 	if s.dispatcher != nil {
-		dispatchReq := worker.ExecutePlanRequest{
+		dispatchReq := domain.ExecutePlanRequest{
 			JobID:       job.JobID,
 			JobType:     job.JobType.String(),
 			DocumentID:  documentID,
@@ -95,7 +94,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 			return job, nil
 		}
 		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
-			if errors.Is(err, worker.ErrApprovalRequired) || errors.Is(err, worker.ErrPlanRejected) {
+			if errors.Is(err, domain.ErrApprovalRequired) || errors.Is(err, domain.ErrPlanRejected) {
 				if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
 					return latest, nil
 				}
