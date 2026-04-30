@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	connect "connectrpc.com/connect"
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
 )
@@ -43,7 +43,7 @@ func (h *DocumentHandler) ListDocuments(ctx context.Context, req *connect.Reques
 	docs := h.service.ListDocuments(ctx, req.Msg.GetWorkspaceId())
 	res := connect.NewResponse(&treev1.ListDocumentsResponse{})
 	for _, doc := range docs {
-		res.Msg.Documents = append(res.Msg.Documents, toProtoDocument(doc))
+		res.Msg.Documents = append(res.Msg.Documents, mappers.ToProtoDocument(doc))
 	}
 	return res, nil
 }
@@ -59,7 +59,7 @@ func (h *DocumentHandler) GetDocument(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&treev1.GetDocumentResponse{Document: toProtoDocument(doc)}), nil
+	return connect.NewResponse(&treev1.GetDocumentResponse{Document: mappers.ToProtoDocument(doc)}), nil
 }
 
 func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Request[treev1.CreateDocumentRequest]) (*connect.Response[treev1.CreateDocumentResponse], error) {
@@ -75,7 +75,7 @@ func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Reque
 	}
 	doc, uploadURL := h.service.CreateDocument(ctx, req.Msg.GetWorkspaceId(), user.ID, req.Msg.GetFilename(), req.Msg.GetMimeType(), req.Msg.GetFileSize())
 	return connect.NewResponse(&treev1.CreateDocumentResponse{
-		Document:          toProtoDocument(doc),
+		Document:          mappers.ToProtoDocument(doc),
 		UploadUrl:         uploadURL,
 		UploadMethod:      "PUT",
 		UploadContentType: req.Msg.GetMimeType(),
@@ -146,20 +146,4 @@ func (h *DocumentHandler) ResumeProcessing(ctx context.Context, req *connect.Req
 			Status:     treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
 		},
 	}), nil
-}
-
-func toProtoDocument(doc *domain.Document) *treev1.Document {
-	return &treev1.Document{
-		DocumentId:  doc.DocumentID,
-		WorkspaceId: doc.WorkspaceID,
-		UploadedBy:  doc.UploadedBy,
-		Filename:    doc.Filename,
-		MimeType:    doc.MimeType,
-		FileSize:    doc.FileSize,
-		// Status, ItemCount, CurrentStage, and ErrorMessage
-		// were moved to document_processing_jobs, so return default values here.
-		Status:    treev1.DocumentLifecycleState_DOCUMENT_LIFECYCLE_STATE_UPLOADED,
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.CreatedAt,
-	}
 }

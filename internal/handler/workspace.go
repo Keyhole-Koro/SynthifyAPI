@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	connect "connectrpc.com/connect"
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/synthify/backend/api/internal/service"
 )
 
@@ -26,7 +26,7 @@ func (h *WorkspaceHandler) ListWorkspaces(ctx context.Context, _ *connect.Reques
 	workspaces := h.service.ListWorkspaces(ctx, user.ID)
 	res := connect.NewResponse(&treev1.ListWorkspacesResponse{})
 	for _, workspace := range workspaces {
-		res.Msg.Workspaces = append(res.Msg.Workspaces, toProtoWorkspace(workspace))
+		res.Msg.Workspaces = append(res.Msg.Workspaces, mappers.ToProtoWorkspace(workspace))
 	}
 	return res, nil
 }
@@ -44,7 +44,7 @@ func (h *WorkspaceHandler) GetWorkspace(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodePermissionDenied, err)
 	}
 	return connect.NewResponse(&treev1.GetWorkspaceResponse{
-		Workspace: toProtoWorkspace(workspace),
+		Workspace: mappers.ToProtoWorkspace(workspace),
 	}), nil
 }
 
@@ -61,7 +61,7 @@ func (h *WorkspaceHandler) CreateWorkspace(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&treev1.CreateWorkspaceResponse{
-		Workspace: toProtoWorkspace(ws),
+		Workspace: mappers.ToProtoWorkspace(ws),
 	}), nil
 }
 
@@ -79,12 +79,4 @@ func (h *WorkspaceHandler) RemoveMember(_ context.Context, _ *connect.Request[tr
 
 func (h *WorkspaceHandler) TransferOwnership(_ context.Context, _ *connect.Request[treev1.TransferOwnershipRequest]) (*connect.Response[treev1.TransferOwnershipResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace ownership is managed at account level"))
-}
-
-func toProtoWorkspace(workspace *domain.Workspace) *treev1.Workspace {
-	return &treev1.Workspace{
-		WorkspaceId: workspace.WorkspaceID,
-		Name:        workspace.Name,
-		CreatedAt:   workspace.CreatedAt,
-	}
 }

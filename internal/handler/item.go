@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	connect "connectrpc.com/connect"
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
 )
@@ -48,7 +48,7 @@ func (h *ItemHandler) GetTreeEntityDetail(ctx context.Context, req *connect.Requ
 			Scope:       item.Scope,
 			Id:          item.ItemID,
 		},
-		Item: toProtoItem(item),
+		Item: mappers.ToProtoItem(item),
 		Evidence: &treev1.TreeEntityEvidence{
 			SourceDocumentIds: []string{},
 		},
@@ -76,7 +76,7 @@ func (h *ItemHandler) CreateItem(ctx context.Context, req *connect.Request[treev
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&treev1.CreateItemResponse{Item: toProtoItem(item)}), nil
+	return connect.NewResponse(&treev1.CreateItemResponse{Item: mappers.ToProtoItem(item)}), nil
 }
 
 func (h *ItemHandler) GetUserItemActivity(_ context.Context, _ *connect.Request[treev1.GetUserItemActivityRequest]) (*connect.Response[treev1.GetUserItemActivityResponse], error) {
@@ -118,19 +118,4 @@ func (h *ItemHandler) RejectAlias(ctx context.Context, req *connect.Request[tree
 		AliasItemId:     req.Msg.GetAliasItemId(),
 		MergeStatus:     "rejected",
 	}), nil
-}
-
-func toProtoItem(item *domain.Item) *treev1.Item {
-	return &treev1.Item{
-		Id:              item.ItemID,
-		Label:           item.Label,
-		Level:           int32(item.Level),
-		Description:     item.Description,
-		SummaryHtml:     item.SummaryHTML,
-		CreatedAt:       item.CreatedAt,
-		Scope:           item.Scope,
-		ParentId:        item.ParentID,
-		ChildIds:        item.ChildIDs,
-		GovernanceState: item.GovernanceState,
-	}
 }

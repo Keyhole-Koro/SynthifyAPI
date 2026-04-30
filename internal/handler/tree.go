@@ -8,6 +8,8 @@ import (
 
 	connect "connectrpc.com/connect"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
+	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
@@ -47,7 +49,7 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 		WorkspaceId: req.Msg.GetWorkspaceId(),
 	}
 	for _, item := range items {
-		protoItem := toProtoItem(item)
+		protoItem := mappers.ToProtoItem(item)
 		tree.Items = append(tree.Items, protoItem)
 	}
 	return connect.NewResponse(&treev1.GetTreeResponse{Tree: tree}), nil
@@ -57,7 +59,7 @@ func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 	workspaceID := r.URL.Query().Get("workspace_id")
 	itemID := r.URL.Query().Get("item_id")
 	if workspaceID == "" || itemID == "" {
-		writeError(w, http.StatusBadRequest, "workspace_id and item_id are required")
+		handlerutil.WriteError(w, http.StatusBadRequest, "workspace_id and item_id are required")
 		return
 	}
 	maxDepth := 3
@@ -69,17 +71,17 @@ func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok || user.ID == "" {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		handlerutil.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 	if !h.workspaces.IsWorkspaceAccessible(r.Context(), workspaceID, user.ID) {
-		writeError(w, http.StatusForbidden, "workspace access denied")
+		handlerutil.WriteError(w, http.StatusForbidden, "workspace access denied")
 		return
 	}
 
 	items, err := h.service.GetSubtree(r.Context(), itemID, maxDepth)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get subtree")
+		handlerutil.WriteError(w, http.StatusInternalServerError, "failed to get subtree")
 		return
 	}
 
@@ -107,7 +109,7 @@ func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 			ChildIDs:    n.ChildIDs,
 		})
 	}
-	writeJSON(w, out)
+	handlerutil.WriteJSON(w, out)
 }
 
 func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1.FindPathsRequest]) (*connect.Response[treev1.FindPathsResponse], error) {
@@ -136,7 +138,7 @@ func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1
 		CrossDocument: req.Msg.GetCrossDocument(),
 	}
 	for _, item := range items {
-		protoTree.Items = append(protoTree.Items, toProtoItem(item))
+		protoTree.Items = append(protoTree.Items, mappers.ToProtoItem(item))
 	}
 
 	res := connect.NewResponse(&treev1.FindPathsResponse{Tree: protoTree})
