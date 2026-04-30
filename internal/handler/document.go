@@ -7,6 +7,7 @@ import (
 
 	connect "connectrpc.com/connect"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
@@ -57,7 +58,7 @@ func (h *DocumentHandler) GetDocument(ctx context.Context, req *connect.Request[
 	}
 	doc, err := h.service.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.GetDocumentResponse{Document: mappers.ToProtoDocument(doc)}), nil
 }
@@ -113,7 +114,7 @@ func (h *DocumentHandler) StartProcessing(ctx context.Context, req *connect.Requ
 	}
 	job, err := h.service.StartProcessing(ctx, doc.WorkspaceID, req.Msg.GetDocumentId(), req.Msg.GetForceReprocess())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.StartProcessingResponse{
 		DocumentId: req.Msg.GetDocumentId(),
@@ -135,7 +136,7 @@ func (h *DocumentHandler) ResumeProcessing(ctx context.Context, req *connect.Req
 	}
 	doc, err := h.service.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.ResumeProcessingResponse{
 		DocumentId: doc.DocumentID,

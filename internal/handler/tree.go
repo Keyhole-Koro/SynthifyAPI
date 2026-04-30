@@ -42,7 +42,7 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 	}
 	items, err := h.service.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 
 	tree := &treev1.Tree{
@@ -125,12 +125,12 @@ func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1
 
 	tree, err := h.service.GetOrCreateTree(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 
 	items, paths, err := h.service.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 
 	protoTree := &treev1.Tree{

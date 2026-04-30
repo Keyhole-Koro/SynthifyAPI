@@ -19,7 +19,7 @@ func NewItemService(repo repository.ItemRepository, tree repository.TreeReposito
 func (s *ItemService) GetTreeEntityDetail(ctx context.Context, itemID string) (*domain.Item, error) {
 	item, ok := s.repo.GetItem(ctx, itemID)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return item, nil
 }
@@ -30,21 +30,21 @@ func (s *ItemService) CreateItem(ctx context.Context, workspaceID, label, descri
 	}
 	item := s.repo.CreateItem(ctx, workspaceID, label, description, parentID, createdBy)
 	if item == nil {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return item, nil
 }
 
 func (s *ItemService) ApproveAlias(ctx context.Context, workspaceID, canonicalItemID, aliasItemID string) error {
 	if !s.repo.ApproveAlias(ctx, workspaceID, canonicalItemID, aliasItemID) {
-		return ErrNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
 
 func (s *ItemService) RejectAlias(ctx context.Context, workspaceID, canonicalItemID, aliasItemID string) error {
 	if !s.repo.RejectAlias(ctx, workspaceID, canonicalItemID, aliasItemID) {
-		return ErrNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }

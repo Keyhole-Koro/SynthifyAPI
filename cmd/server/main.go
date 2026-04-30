@@ -9,7 +9,6 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/app"
 	"github.com/Keyhole-Koro/SynthifyShared/config"
 	treev1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1/treev1connect"
-	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/synthify/backend/api/internal/handler"
 	"github.com/synthify/backend/api/internal/service"
@@ -20,9 +19,11 @@ func main() {
 	ctx := context.Background()
 	cfg := config.LoadAPI()
 
-	store := app.InitStore(ctx, app.PublicUploadURLGenerator(cfg.GCSUploadURLBase))
+	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
+	store := appCtx.Store
+	notifier := appCtx.Notifier
+
 	dispatcher := initDispatcher(cfg)
-	notifier := jobstatus.NewNotifier(ctx, cfg.FirebaseProjectID)
 
 	workspaceService := service.NewWorkspaceService(store, store)
 	documentService := service.NewDocumentService(store, store, app.PublicUploadURLGenerator(cfg.InternalGCSUploadBase), dispatcher, notifier)

@@ -46,7 +46,7 @@ func (s *DocumentService) ListDocuments(ctx context.Context, workspaceID string)
 func (s *DocumentService) GetDocument(ctx context.Context, documentID string) (*domain.Document, error) {
 	doc, ok := s.repo.GetDocument(ctx, documentID)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return doc, nil
 }
@@ -59,7 +59,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 	_ = forceReprocess
 	doc, ok := s.repo.GetDocument(ctx, documentID)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	tree, err := s.tree.GetOrCreateTree(ctx, wsID)
 	if err != nil {
@@ -67,7 +67,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 	}
 	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	if job == nil {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	if s.notifier != nil {
 		s.notifier.Queued(ctx, jobstatus.Payload{
@@ -125,7 +125,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 func (s *DocumentService) GetLatestProcessingJob(ctx context.Context, documentID string) (*domain.DocumentProcessingJob, error) {
 	job, ok := s.repo.GetLatestProcessingJob(ctx, documentID)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return job, nil
 }

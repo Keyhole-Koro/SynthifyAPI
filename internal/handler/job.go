@@ -7,6 +7,7 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
@@ -36,7 +37,7 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 	}
 	plan, err := h.service.GetExecutionPlan(ctx, req.Msg.GetJobId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.GetJobExecutionPlanResponse{
 		Plan: mappers.ToProtoExecutionPlan(plan),
@@ -49,7 +50,7 @@ func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.R
 	}
 	requests, err := h.service.ListApprovalRequests(ctx, req.Msg.GetJobId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	res := connect.NewResponse(&treev1.ListJobApprovalRequestsResponse{})
 	for _, request := range requests {
@@ -68,7 +69,7 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	}
 	approval, err := h.service.RequestApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.RequestJobApprovalResponse{Request: mappers.ToProtoApprovalRequest(approval)}), nil
 }
@@ -85,7 +86,7 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
 	if err := h.service.ApproveApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.ApproveJobApprovalResponse{Status: "approved"}), nil
 }
@@ -102,7 +103,7 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
 	if err := h.service.RejectApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.RejectJobApprovalResponse{Status: "rejected"}), nil
 }
@@ -113,7 +114,7 @@ func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Reque
 	}
 	logs, err := h.service.ListMutationLogs(ctx, req.Msg.GetJobId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	res := connect.NewResponse(&treev1.ListJobMutationLogsResponse{})
 	for _, log := range logs {
@@ -142,7 +143,7 @@ func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*do
 	}
 	job, err := h.service.GetJob(ctx, jobID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, job.DocumentID, ""); err != nil {
 		return nil, err

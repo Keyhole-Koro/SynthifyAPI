@@ -6,6 +6,7 @@ import (
 
 	connect "connectrpc.com/connect"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/synthify/backend/api/internal/service"
 )
@@ -41,7 +42,7 @@ func (h *WorkspaceHandler) GetWorkspace(ctx context.Context, req *connect.Reques
 	}
 	workspace, err := h.service.GetWorkspace(ctx, req.Msg.GetWorkspaceId(), user.ID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodePermissionDenied, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.GetWorkspaceResponse{
 		Workspace: mappers.ToProtoWorkspace(workspace),
@@ -58,7 +59,7 @@ func (h *WorkspaceHandler) CreateWorkspace(ctx context.Context, req *connect.Req
 	}
 	ws, err := h.service.CreateWorkspace(ctx, req.Msg.GetName(), user.ID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.CreateWorkspaceResponse{
 		Workspace: mappers.ToProtoWorkspace(ws),

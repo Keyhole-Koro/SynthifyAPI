@@ -8,8 +8,6 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 )
 
-var ErrNotFound = errors.New("not found")
-
 type WorkspaceService struct {
 	accounts   repository.AccountRepository
 	workspaces repository.WorkspaceRepository
@@ -25,11 +23,11 @@ func (s *WorkspaceService) ListWorkspaces(ctx context.Context, userID string) []
 
 func (s *WorkspaceService) GetWorkspace(ctx context.Context, id, userID string) (*domain.Workspace, error) {
 	if !s.workspaces.IsWorkspaceAccessible(ctx, id, userID) {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	ws, ok := s.workspaces.GetWorkspace(ctx, id)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return ws, nil
 }

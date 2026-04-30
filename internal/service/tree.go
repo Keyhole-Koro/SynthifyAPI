@@ -18,7 +18,7 @@ func NewTreeService(repo repository.TreeRepository) *TreeService {
 func (s *TreeService) GetTreeByWorkspace(ctx context.Context, workspaceID string) ([]*domain.Item, error) {
 	items, ok := s.repo.GetTreeByWorkspace(ctx, workspaceID)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return items, nil
 }
@@ -26,7 +26,7 @@ func (s *TreeService) GetTreeByWorkspace(ctx context.Context, workspaceID string
 func (s *TreeService) FindPaths(ctx context.Context, treeID, sourceItemID, targetItemID string, maxDepth, limit int) ([]*domain.Item, []domain.TreePath, error) {
 	items, paths, ok := s.repo.FindPaths(ctx, treeID, sourceItemID, targetItemID, maxDepth, limit)
 	if !ok {
-		return nil, nil, ErrNotFound
+		return nil, nil, domain.ErrNotFound
 	}
 	return items, paths, nil
 }
