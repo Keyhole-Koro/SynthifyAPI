@@ -56,7 +56,6 @@ func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, 
 }
 
 func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID string, forceReprocess bool) (*domain.DocumentProcessingJob, error) {
-	_ = forceReprocess
 	doc, ok := s.repo.GetDocument(ctx, documentID)
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -65,7 +64,85 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 	if err != nil {
 		return nil, err
 	}
-	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
+	jobType := treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT
+	if forceReprocess {
+		jobType = treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT
+	}
+	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, jobType)
+	if job == nil {
+		return nil, domain.ErrNotFound
+	}
+	if s.notifier != nil {
+		s.notifier.Queued(ctx, jobstatus.Payload{
+			JobID:       job.JobID,
+			JobType:     job.JobType.String(),
+			DocumentID:  documentID,
+			WorkspaceID: wsID,
+			TreeID:      tree.TreeID,
+		})
+	}
+	if s.dispatcher != nil {
+		dispatchReq := domain.ExecutePlanRequest{
+			JobID:       job.JobID,
+			JobType:     job.JobType.String(),
+			DocumentID:  documentID,
+			WorkspaceID: wsID,
+			TreeID:      tree.TreeID,
+			FileURI:     s.sourceURLGenerator(wsID, doc.DocumentID),
+			Filename:    doc.Filename,
+			MimeType:    doc.MimeType,
+		}
+		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
+			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			return job, nil
+		}
+		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
+			if errors.Is(err, domain.ErrApprovalRequired) || errors.Is(err, domain.ErrPlanRejected) {
+				if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+					return latest, nil
+				}
+				return job, nil
+			}
+			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			if s.notifier != nil {
+				s.notifier.Failed(ctx, jobstatus.Payload{
+					JobID:       job.JobID,
+					JobType:     job.JobType.String(),
+					DocumentID:  documentID,
+					WorkspaceID: wsID,
+					TreeID:      tree.TreeID,
+				}, err.Error())
+			}
+			if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+				return latest, nil
+			}
+			return job, nil
+		}
+	}
+	if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+		job = latest
+	}
+	return job, nil
+}
+
+func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID string) (*domain.DocumentProcessingJob, error) {
+	doc, ok := s.repo.GetDocument(ctx, documentID)
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+		switch latest.Status {
+		case treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
+			treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_QUEUED:
+			return latest, nil
+		}
+	}
+
+	tree, err := s.tree.GetOrCreateTree(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT)
 	if job == nil {
 		return nil, domain.ErrNotFound
 	}

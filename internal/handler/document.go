@@ -138,13 +138,17 @@ func (h *DocumentHandler) ResumeProcessing(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
+	job, err := h.service.ResumeProcessing(ctx, doc.WorkspaceID, doc.DocumentID)
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
+	}
 	return connect.NewResponse(&treev1.ResumeProcessingResponse{
 		DocumentId: doc.DocumentID,
 		Job: &treev1.Job{
-			JobId:      "job_resume_" + doc.DocumentID,
+			JobId:      job.JobID,
 			DocumentId: doc.DocumentID,
 			Type:       treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT,
-			Status:     treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
+			Status:     job.Status,
 		},
 	}), nil
 }
