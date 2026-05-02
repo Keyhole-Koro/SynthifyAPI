@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
-	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
-	"github.com/Keyhole-Koro/SynthifyShared/repository"
+	"github.com/synthify/backend/packages/shared/domain"
+	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
+	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/packages/shared/jobstatus"
+	"github.com/synthify/backend/packages/shared/repository"
 )
 
 type WorkerDispatcher interface {
@@ -82,7 +83,15 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 			TreeID:      tree.TreeID,
 		})
 	}
-	log.Printf("job queued: job=%s doc=%s workspace=%s type=%s", job.JobID, documentID, wsID, jobType)
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       job.JobID,
+		WorkspaceID: wsID,
+		DocumentID:  documentID,
+		Level:       joblog.INFO,
+		Event:       "job.queued",
+		Message:     fmt.Sprintf("job queued: doc=%s type=%s", documentID, jobType),
+		Detail:      map[string]any{"type": jobType.String()},
+	})
 	if s.dispatcher != nil {
 		dispatchReq := domain.ExecutePlanRequest{
 			JobID:       job.JobID,
@@ -95,7 +104,15 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 			MimeType:    doc.MimeType,
 		}
 		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
-			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
+			joblog.FromContext(ctx).Log(ctx, joblog.Event{
+				JobID:       job.JobID,
+				WorkspaceID: wsID,
+				DocumentID:  documentID,
+				Level:       joblog.ERROR,
+				Event:       "job.dispatch_failed",
+				Message:     fmt.Sprintf("job dispatch failed: %v", err),
+				Detail:      map[string]any{"error": err.Error()},
+			})
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			return job, nil
 		}
@@ -106,7 +123,15 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 				}
 				return job, nil
 			}
-			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
+			joblog.FromContext(ctx).Log(ctx, joblog.Event{
+				JobID:       job.JobID,
+				WorkspaceID: wsID,
+				DocumentID:  documentID,
+				Level:       joblog.ERROR,
+				Event:       "job.dispatch_failed",
+				Message:     fmt.Sprintf("job dispatch failed: %v", err),
+				Detail:      map[string]any{"error": err.Error()},
+			})
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
 				s.notifier.Failed(ctx, jobstatus.Payload{
@@ -159,7 +184,15 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 			TreeID:      tree.TreeID,
 		})
 	}
-	log.Printf("job queued: job=%s doc=%s workspace=%s type=%s", job.JobID, documentID, wsID, job.JobType)
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       job.JobID,
+		WorkspaceID: wsID,
+		DocumentID:  documentID,
+		Level:       joblog.INFO,
+		Event:       "job.queued",
+		Message:     fmt.Sprintf("job queued: doc=%s type=%s", documentID, job.JobType),
+		Detail:      map[string]any{"type": job.JobType.String()},
+	})
 	if s.dispatcher != nil {
 		dispatchReq := domain.ExecutePlanRequest{
 			JobID:       job.JobID,
@@ -172,7 +205,15 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 			MimeType:    doc.MimeType,
 		}
 		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
-			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
+			joblog.FromContext(ctx).Log(ctx, joblog.Event{
+				JobID:       job.JobID,
+				WorkspaceID: wsID,
+				DocumentID:  documentID,
+				Level:       joblog.ERROR,
+				Event:       "job.dispatch_failed",
+				Message:     fmt.Sprintf("job dispatch failed: %v", err),
+				Detail:      map[string]any{"error": err.Error()},
+			})
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			return job, nil
 		}
@@ -183,7 +224,15 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 				}
 				return job, nil
 			}
-			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
+			joblog.FromContext(ctx).Log(ctx, joblog.Event{
+				JobID:       job.JobID,
+				WorkspaceID: wsID,
+				DocumentID:  documentID,
+				Level:       joblog.ERROR,
+				Event:       "job.dispatch_failed",
+				Message:     fmt.Sprintf("job dispatch failed: %v", err),
+				Detail:      map[string]any{"error": err.Error()},
+			})
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
 				s.notifier.Failed(ctx, jobstatus.Payload{

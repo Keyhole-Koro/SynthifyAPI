@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
+	"github.com/synthify/backend/packages/shared/repository/mock"
 )
 
 var (

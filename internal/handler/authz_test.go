@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	connect "connectrpc.com/connect"
-	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
-	"github.com/Keyhole-Koro/SynthifyShared/middleware"
-	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
+	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
+	"github.com/synthify/backend/packages/shared/middleware"
+	"github.com/synthify/backend/packages/shared/repository/mock"
 )
 
 // assertConnectCode fails the test if err is nil or does not carry the expected connect code.

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/Keyhole-Koro/SynthifyShared/repository"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/repository"
 )
 
 type WorkspaceService struct {

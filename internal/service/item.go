@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/Keyhole-Koro/SynthifyShared/repository"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/repository"
 )
 
 type ItemService struct {

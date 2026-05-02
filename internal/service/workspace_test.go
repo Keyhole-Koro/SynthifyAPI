@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/repository/mock"
 )
 
 func createWorkspaceForUser(t *testing.T, store *mock.Store, userID string) string {

@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	connect "connectrpc.com/connect"
-	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
-	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
-	"github.com/Keyhole-Koro/SynthifyShared/mappers"
-	"github.com/Keyhole-Koro/SynthifyShared/repository"
-	"github.com/synthify/backend/api/internal/service"
+	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
+	"github.com/synthify/backend/packages/shared/handlerutil"
+	"github.com/synthify/backend/packages/shared/mappers"
+	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/apps/api/internal/service"
 )
 
 type DocumentHandler struct {
