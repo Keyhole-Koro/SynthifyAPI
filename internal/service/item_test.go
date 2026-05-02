@@ -18,26 +18,16 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestGetTreeEntityDetail_ExistingItem_ReturnsItem(t *testing.T) {
+func TestCreateItem_CreatesItem(t *testing.T) {
 	ctx := context.Background()
 	wsID := "ws-1"
 	repo.CreateWorkspace(ctx, "acct-1", "Test")
-	repo.CreateItem(ctx, wsID, "root", "root desc", "", "system")
 
-	item, err := svc.GetTreeEntityDetail(ctx, "item-root")
+	item, err := svc.CreateItem(ctx, wsID, "root", "root desc", "", "system")
 	if err != nil {
-		t.Fatalf("GetTreeEntityDetail: %v", err)
+		t.Fatalf("CreateItem: %v", err)
 	}
 	if item == nil {
 		t.Fatal("expected item, got nil")
-	}
-}
-
-func TestApproveAlias_CallsRepo(t *testing.T) {
-	ctx := context.Background()
-	wsID := "ws-1"
-	err := svc.ApproveAlias(ctx, wsID, "n1", "n2")
-	if err != nil {
-		t.Errorf("ApproveAlias: %v", err)
 	}
 }

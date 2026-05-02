@@ -17,10 +17,6 @@ func NewWorkspaceService(accounts repository.AccountRepository, workspaces repos
 	return &WorkspaceService{accounts: accounts, workspaces: workspaces}
 }
 
-func (s *WorkspaceService) ListWorkspaces(ctx context.Context, userID string) []*domain.Workspace {
-	return s.workspaces.ListWorkspacesByUser(ctx, userID)
-}
-
 func (s *WorkspaceService) GetWorkspace(ctx context.Context, id, userID string) (*domain.Workspace, error) {
 	if !s.workspaces.IsWorkspaceAccessible(ctx, id, userID) {
 		return nil, domain.ErrNotFound

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/Keyhole-Koro/SynthifyShared/repository/mock"
 )
 
@@ -29,7 +30,7 @@ func TestGetWorkspace_NonMember_ReturnsErrNotFound(t *testing.T) {
 	svc := NewWorkspaceService(store, store)
 
 	_, err := svc.GetWorkspace(ctx, wsID, "stranger")
-	if !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("GetWorkspace non-member: err = %v, want ErrNotFound", err)
 	}
 }
@@ -55,7 +56,7 @@ func TestGetWorkspace_UnknownID_ReturnsErrNotFound(t *testing.T) {
 	svc := NewWorkspaceService(store, store)
 
 	_, err := svc.GetWorkspace(ctx, "nonexistent_ws", "anyone")
-	if !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("GetWorkspace unknown ID: err = %v, want ErrNotFound", err)
 	}
 }
@@ -74,18 +75,5 @@ func TestCreateWorkspace_NewUser_CreatesWorkspace(t *testing.T) {
 	}
 	if ws.Name != "my-workspace" {
 		t.Errorf("workspace.Name = %q, want my-workspace", ws.Name)
-	}
-}
-
-func TestListWorkspaces_ReturnsOnlyUserWorkspaces(t *testing.T) {
-	ctx := context.Background()
-	store := mock.NewStore()
-	createWorkspaceForUser(t, store, "user_a")
-	createWorkspaceForUser(t, store, "user_b")
-	svc := NewWorkspaceService(store, store)
-
-	got := svc.ListWorkspaces(ctx, "user_a")
-	if len(got) != 1 {
-		t.Errorf("ListWorkspaces user_a: got %d workspaces, want 1", len(got))
 	}
 }

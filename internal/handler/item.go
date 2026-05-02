@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	connect "connectrpc.com/connect"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 	"github.com/Keyhole-Koro/SynthifyShared/mappers"
@@ -38,9 +39,9 @@ func (h *ItemHandler) GetTreeEntityDetail(ctx context.Context, req *connect.Requ
 		return nil, err
 	}
 
-	item, err := h.service.GetTreeEntityDetail(ctx, req.Msg.GetTargetRef().GetId())
-	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+	item, ok := h.items.GetItem(ctx, req.Msg.GetTargetRef().GetId())
+	if !ok {
+		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
 
 	detail := &treev1.TreeEntityDetail{
@@ -94,8 +95,8 @@ func (h *ItemHandler) ApproveAlias(ctx context.Context, req *connect.Request[tre
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	if err := h.service.ApproveAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
-		return nil, handlerutil.ToConnectError(err)
+	if !h.items.ApproveAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()) {
+		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
 	return connect.NewResponse(&treev1.ApproveAliasResponse{
 		CanonicalItemId: req.Msg.GetCanonicalItemId(),
@@ -111,8 +112,8 @@ func (h *ItemHandler) RejectAlias(ctx context.Context, req *connect.Request[tree
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	if err := h.service.RejectAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
-		return nil, handlerutil.ToConnectError(err)
+	if !h.items.RejectAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()) {
+		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
 	return connect.NewResponse(&treev1.RejectAliasResponse{
 		CanonicalItemId: req.Msg.GetCanonicalItemId(),

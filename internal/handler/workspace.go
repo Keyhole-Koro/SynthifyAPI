@@ -8,15 +8,17 @@ import (
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 	"github.com/Keyhole-Koro/SynthifyShared/mappers"
+	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/synthify/backend/api/internal/service"
 )
 
 type WorkspaceHandler struct {
-	service *service.WorkspaceService
+	service    *service.WorkspaceService
+	workspaces repository.WorkspaceRepository
 }
 
-func NewWorkspaceHandler(svc *service.WorkspaceService) *WorkspaceHandler {
-	return &WorkspaceHandler{service: svc}
+func NewWorkspaceHandler(svc *service.WorkspaceService, workspaceRepo repository.WorkspaceRepository) *WorkspaceHandler {
+	return &WorkspaceHandler{service: svc, workspaces: workspaceRepo}
 }
 
 func (h *WorkspaceHandler) ListWorkspaces(ctx context.Context, _ *connect.Request[treev1.ListWorkspacesRequest]) (*connect.Response[treev1.ListWorkspacesResponse], error) {
@@ -24,7 +26,7 @@ func (h *WorkspaceHandler) ListWorkspaces(ctx context.Context, _ *connect.Reques
 	if err != nil {
 		return nil, err
 	}
-	workspaces := h.service.ListWorkspaces(ctx, user.ID)
+	workspaces := h.workspaces.ListWorkspacesByUser(ctx, user.ID)
 	res := connect.NewResponse(&treev1.ListWorkspacesResponse{})
 	for _, workspace := range workspaces {
 		res.Msg.Workspaces = append(res.Msg.Workspaces, mappers.ToProtoWorkspace(workspace))

@@ -27,16 +27,14 @@ func main() {
 
 	workspaceService := service.NewWorkspaceService(store, store)
 	documentService := service.NewDocumentService(store, store, app.PublicUploadURLGenerator(cfg.InternalGCSUploadBase), dispatcher, notifier)
-	jobService := service.NewJobService(store)
-	treeService := service.NewTreeService(store)
 	itemService := service.NewItemService(store, store)
 
-	treeHandler := handler.NewTreeHandler(treeService, store, store)
+	treeHandler := handler.NewTreeHandler(store, store, store)
 
 	mux := http.NewServeMux()
-	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService)))
+	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService, store)))
 	mux.Handle(treev1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.PublicUploadURLGenerator(cfg.GCSUploadURLBase))))
-	mux.Handle(treev1connect.NewJobServiceHandler(handler.NewJobHandler(jobService, store, store)))
+	mux.Handle(treev1connect.NewJobServiceHandler(handler.NewJobHandler(store, store, store)))
 	mux.Handle(treev1connect.NewTreeServiceHandler(treeHandler))
 	mux.Handle(treev1connect.NewItemServiceHandler(handler.NewItemHandler(itemService, store, store)))
 	mux.HandleFunc("GET /tree/subtree", treeHandler.GetSubtreeHTTP)

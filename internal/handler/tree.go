@@ -7,27 +7,27 @@ import (
 	"strconv"
 
 	connect "connectrpc.com/connect"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/handlerutil"
 	"github.com/Keyhole-Koro/SynthifyShared/mappers"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
-	"github.com/synthify/backend/api/internal/service"
 )
 
 type TreeHandler struct {
-	service    *service.TreeService
+	repo       repository.TreeRepository
 	workspaces repository.WorkspaceRepository
 	documents  repository.DocumentRepository
 }
 
 func NewTreeHandler(
-	svc *service.TreeService,
+	treeRepo repository.TreeRepository,
 	workspaceRepo repository.WorkspaceRepository,
 	documentRepo repository.DocumentRepository,
 ) *TreeHandler {
 	return &TreeHandler{
-		service:    svc,
+		repo:       treeRepo,
 		workspaces: workspaceRepo,
 		documents:  documentRepo,
 	}
@@ -40,9 +40,9 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	items, err := h.service.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
-	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+	items, ok := h.repo.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
+	if !ok {
+		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
 
 	tree := &treev1.Tree{
@@ -79,7 +79,7 @@ func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.service.GetSubtree(r.Context(), itemID, maxDepth)
+	items, err := h.repo.GetSubtree(r.Context(), itemID, maxDepth)
 	if err != nil {
 		handlerutil.WriteError(w, http.StatusInternalServerError, "failed to get subtree")
 		return
@@ -123,14 +123,14 @@ func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1
 		return nil, err
 	}
 
-	tree, err := h.service.GetOrCreateTree(ctx, req.Msg.GetWorkspaceId())
+	tree, err := h.repo.GetOrCreateTree(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
 
-	items, paths, err := h.service.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
-	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+	items, paths, ok := h.repo.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
+	if !ok {
+		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
 
 	protoTree := &treev1.Tree{
