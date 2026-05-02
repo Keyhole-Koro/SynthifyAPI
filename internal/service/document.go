@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
@@ -81,6 +82,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 			TreeID:      tree.TreeID,
 		})
 	}
+	log.Printf("job queued: job=%s doc=%s workspace=%s type=%s", job.JobID, documentID, wsID, jobType)
 	if s.dispatcher != nil {
 		dispatchReq := domain.ExecutePlanRequest{
 			JobID:       job.JobID,
@@ -93,6 +95,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 			MimeType:    doc.MimeType,
 		}
 		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
+			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			return job, nil
 		}
@@ -103,6 +106,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 				}
 				return job, nil
 			}
+			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
 				s.notifier.Failed(ctx, jobstatus.Payload{
@@ -155,6 +159,7 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 			TreeID:      tree.TreeID,
 		})
 	}
+	log.Printf("job queued: job=%s doc=%s workspace=%s type=%s", job.JobID, documentID, wsID, job.JobType)
 	if s.dispatcher != nil {
 		dispatchReq := domain.ExecutePlanRequest{
 			JobID:       job.JobID,
@@ -167,6 +172,7 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 			MimeType:    doc.MimeType,
 		}
 		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
+			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			return job, nil
 		}
@@ -177,6 +183,7 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 				}
 				return job, nil
 			}
+			log.Printf("job dispatch failed: job=%s err=%v", job.JobID, err)
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
 				s.notifier.Failed(ctx, jobstatus.Payload{

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log"
 
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
@@ -70,6 +71,7 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	if !ok {
 		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
+	log.Printf("approval requested: job=%s by=%s reason=%q", req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
 	return connect.NewResponse(&treev1.RequestJobApprovalResponse{Request: mappers.ToProtoApprovalRequest(approval)}), nil
 }
 
@@ -87,6 +89,7 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 	if !h.repo.ApproveJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID) {
 		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
+	log.Printf("approval approved: job=%s approval=%s by=%s", req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID)
 	return connect.NewResponse(&treev1.ApproveJobApprovalResponse{Status: "approved"}), nil
 }
 
@@ -104,6 +107,7 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 	if !h.repo.RejectJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()) {
 		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
+	log.Printf("approval rejected: job=%s approval=%s by=%s reason=%q", req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason())
 	return connect.NewResponse(&treev1.RejectJobApprovalResponse{Status: "rejected"}), nil
 }
 

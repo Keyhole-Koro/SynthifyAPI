@@ -43,7 +43,7 @@ func main() {
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
-	h := middleware.Logger(middleware.CORS(cfg.CORSAllowedOrigins, middleware.WithAuth(cfg.FirebaseProjectID, mux)))
+	h := middleware.Recover(middleware.Logger(middleware.CORS(cfg.CORSAllowedOrigins, middleware.WithAuth(cfg.FirebaseProjectID, mux))))
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Synthify API listening on %s", addr)
 	if err := http.ListenAndServe(addr, h); err != nil {

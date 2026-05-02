@@ -84,6 +84,14 @@ func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteError(w, http.StatusInternalServerError, "failed to get subtree")
 		return
 	}
+	if len(items) == 0 {
+		handlerutil.WriteError(w, http.StatusNotFound, "subtree root item not found")
+		return
+	}
+	if items[0].WorkspaceID != workspaceID {
+		handlerutil.WriteError(w, http.StatusForbidden, "item does not belong to workspace")
+		return
+	}
 
 	type respItem struct {
 		ID          string   `json:"id"`
