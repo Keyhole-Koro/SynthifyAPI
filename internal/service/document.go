@@ -18,26 +18,26 @@ type WorkerDispatcher interface {
 }
 
 type DocumentService struct {
-	repo               repository.DocumentRepository
-	tree               repository.TreeRepository
-	sourceURLGenerator repository.UploadURLGenerator
-	dispatcher         WorkerDispatcher
-	notifier           jobstatus.Notifier
+	repo             repository.DocumentRepository
+	tree             repository.TreeRepository
+	sourceURLBuilder repository.DocumentSourceURLBuilder
+	dispatcher       WorkerDispatcher
+	notifier         jobstatus.Notifier
 }
 
 func NewDocumentService(
 	repo repository.DocumentRepository,
 	tree repository.TreeRepository,
-	sourceURLGenerator repository.UploadURLGenerator,
+	sourceURLBuilder repository.DocumentSourceURLBuilder,
 	dispatcher WorkerDispatcher,
 	notifier jobstatus.Notifier,
 ) *DocumentService {
 	return &DocumentService{
-		repo:               repo,
-		tree:               tree,
-		sourceURLGenerator: sourceURLGenerator,
-		dispatcher:         dispatcher,
-		notifier:           notifier,
+		repo:             repo,
+		tree:             tree,
+		sourceURLBuilder: sourceURLBuilder,
+		dispatcher:       dispatcher,
+		notifier:         notifier,
 	}
 }
 
@@ -99,7 +99,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 			DocumentID:  documentID,
 			WorkspaceID: wsID,
 			TreeID:      tree.TreeID,
-			FileURI:     s.sourceURLGenerator(wsID, doc.DocumentID),
+			FileURI:     s.sourceURLBuilder(wsID, doc.DocumentID),
 			Filename:    doc.Filename,
 			MimeType:    doc.MimeType,
 		}
@@ -114,6 +114,15 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 				Detail:      map[string]any{"error": err.Error()},
 			})
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			if s.notifier != nil {
+				s.notifier.Failed(ctx, jobstatus.Payload{
+					JobID:       job.JobID,
+					JobType:     job.JobType.String(),
+					DocumentID:  documentID,
+					WorkspaceID: wsID,
+					TreeID:      tree.TreeID,
+				}, err.Error())
+			}
 			return job, nil
 		}
 		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
@@ -200,7 +209,7 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 			DocumentID:  documentID,
 			WorkspaceID: wsID,
 			TreeID:      tree.TreeID,
-			FileURI:     s.sourceURLGenerator(wsID, doc.DocumentID),
+			FileURI:     s.sourceURLBuilder(wsID, doc.DocumentID),
 			Filename:    doc.Filename,
 			MimeType:    doc.MimeType,
 		}
@@ -215,6 +224,15 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 				Detail:      map[string]any{"error": err.Error()},
 			})
 			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			if s.notifier != nil {
+				s.notifier.Failed(ctx, jobstatus.Payload{
+					JobID:       job.JobID,
+					JobType:     job.JobType.String(),
+					DocumentID:  documentID,
+					WorkspaceID: wsID,
+					TreeID:      tree.TreeID,
+				}, err.Error())
+			}
 			return job, nil
 		}
 		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {

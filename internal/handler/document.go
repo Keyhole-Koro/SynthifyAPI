@@ -6,31 +6,31 @@ import (
 	"fmt"
 
 	connect "connectrpc.com/connect"
+	"github.com/synthify/backend/apps/api/internal/service"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/handlerutil"
 	"github.com/synthify/backend/packages/shared/mappers"
 	"github.com/synthify/backend/packages/shared/repository"
-	"github.com/synthify/backend/apps/api/internal/service"
 )
 
 type DocumentHandler struct {
-	service            *service.DocumentService
-	workspaces         repository.WorkspaceRepository
-	documents          repository.DocumentRepository
-	uploadURLGenerator repository.UploadURLGenerator
+	service          *service.DocumentService
+	workspaces       repository.WorkspaceRepository
+	documents        repository.DocumentRepository
+	uploadURLBuilder repository.DocumentUploadURLBuilder
 }
 
 func NewDocumentHandler(
 	svc *service.DocumentService,
 	workspaceRepo repository.WorkspaceRepository,
 	documentRepo repository.DocumentRepository,
-	uploadURLGenerator repository.UploadURLGenerator,
+	uploadURLBuilder repository.DocumentUploadURLBuilder,
 ) *DocumentHandler {
 	return &DocumentHandler{
-		service:            svc,
-		workspaces:         workspaceRepo,
-		documents:          documentRepo,
-		uploadURLGenerator: uploadURLGenerator,
+		service:          svc,
+		workspaces:       workspaceRepo,
+		documents:        documentRepo,
+		uploadURLBuilder: uploadURLBuilder,
 	}
 }
 
@@ -78,7 +78,7 @@ func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Reque
 	return connect.NewResponse(&treev1.CreateDocumentResponse{
 		Document:          mappers.ToProtoDocument(doc),
 		UploadUrl:         uploadURL,
-		UploadMethod:      "PUT",
+		UploadMethod:      "POST",
 		UploadContentType: req.Msg.GetMimeType(),
 	}), nil
 }
@@ -93,7 +93,7 @@ func (h *DocumentHandler) GetUploadURL(ctx context.Context, req *connect.Request
 	token := fmt.Sprintf("upload-%s", req.Msg.GetFilename())
 	// GetUploadURL uses a special tokenized path. If that also needs to be shared,
 	// extend the Generator. For now, keep the Generator as the base and wrap it as needed.
-	uploadURL := h.uploadURLGenerator(req.Msg.GetWorkspaceId(), token+"/"+req.Msg.GetFilename())
+	uploadURL := h.uploadURLBuilder(req.Msg.GetWorkspaceId(), token+"/"+req.Msg.GetFilename())
 	return connect.NewResponse(&treev1.GetUploadURLResponse{
 		UploadUrl:   uploadURL,
 		UploadToken: token,

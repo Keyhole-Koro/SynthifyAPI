@@ -6,15 +6,15 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/synthify/backend/apps/api/internal/handler"
+	"github.com/synthify/backend/apps/api/internal/service"
+	"github.com/synthify/backend/apps/worker/pkg/worker"
 	"github.com/synthify/backend/packages/shared/app"
 	"github.com/synthify/backend/packages/shared/config"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
 	"github.com/synthify/backend/packages/shared/joblog"
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository/postgres"
-	"github.com/synthify/backend/apps/api/internal/handler"
-	"github.com/synthify/backend/apps/api/internal/service"
-	"github.com/synthify/backend/apps/worker/pkg/worker"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	dispatcher := initDispatcher(cfg)
 
 	workspaceService := service.NewWorkspaceService(store, store)
-	documentService := service.NewDocumentService(store, store, app.PublicUploadURLGenerator(cfg.InternalGCSUploadBase), dispatcher, notifier)
+	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), dispatcher, notifier)
 	itemService := service.NewItemService(store, store)
 
 	treeHandler := handler.NewTreeHandler(store, store, store)
@@ -37,7 +37,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService, store)))
-	mux.Handle(treev1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.PublicUploadURLGenerator(cfg.GCSUploadURLBase))))
+	mux.Handle(treev1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.NewDocumentUploadURLBuilder(cfg.GCSUploadURLBase))))
 	mux.Handle(treev1connect.NewJobServiceHandler(jobHandler))
 	mux.Handle(treev1connect.NewTreeServiceHandler(treeHandler))
 	mux.Handle(treev1connect.NewItemServiceHandler(handler.NewItemHandler(itemService, store, store)))
