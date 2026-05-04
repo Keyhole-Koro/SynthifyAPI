@@ -3,15 +3,12 @@ package handler
 import (
 	"context"
 	"errors"
-	"net/http"
-	"strconv"
 
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/handlerutil"
 	"github.com/synthify/backend/packages/shared/mappers"
-	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository"
 )
 
@@ -55,69 +52,37 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 	return connect.NewResponse(&treev1.GetTreeResponse{Tree: tree}), nil
 }
 
-func (h *TreeHandler) GetSubtreeHTTP(w http.ResponseWriter, r *http.Request) {
-	workspaceID := r.URL.Query().Get("workspace_id")
-	itemID := r.URL.Query().Get("item_id")
-	if workspaceID == "" || itemID == "" {
-		handlerutil.WriteError(w, http.StatusBadRequest, "workspace_id and item_id are required")
-		return
+func (h *TreeHandler) GetSubtree(ctx context.Context, req *connect.Request[treev1.GetSubtreeRequest]) (*connect.Response[treev1.GetSubtreeResponse], error) {
+	wsID := req.Msg.GetWorkspaceId()
+	if wsID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workspace_id is required"))
 	}
-	maxDepth := 3
-	if v := r.URL.Query().Get("max_depth"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			maxDepth = n
-		}
+	if err := authorizeWorkspace(ctx, h.workspaces, wsID); err != nil {
+		return nil, err
 	}
-
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.ID == "" {
-		handlerutil.WriteError(w, http.StatusUnauthorized, "authentication required")
-		return
+	itemID := req.Msg.GetItemId()
+	if itemID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("item_id is required"))
 	}
-	if !h.workspaces.IsWorkspaceAccessible(r.Context(), workspaceID, user.ID) {
-		handlerutil.WriteError(w, http.StatusForbidden, "workspace access denied")
-		return
+	maxDepth := int(req.Msg.GetMaxDepth())
+	if maxDepth <= 0 {
+		maxDepth = 3
 	}
-
-	items, err := h.repo.GetSubtree(r.Context(), itemID, maxDepth)
+	items, err := h.repo.GetSubtree(ctx, itemID, maxDepth)
 	if err != nil {
-		handlerutil.WriteError(w, http.StatusInternalServerError, "failed to get subtree")
-		return
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	if len(items) == 0 {
-		handlerutil.WriteError(w, http.StatusNotFound, "subtree root item not found")
-		return
+		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
 	}
-	if items[0].WorkspaceID != workspaceID {
-		handlerutil.WriteError(w, http.StatusForbidden, "item does not belong to workspace")
-		return
+	if items[0].WorkspaceID != wsID {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("item does not belong to workspace"))
 	}
-
-	type respItem struct {
-		ID          string   `json:"id"`
-		Label       string   `json:"label"`
-		Level       int      `json:"level"`
-		Description string   `json:"description"`
-		SummaryHTML string   `json:"summary_html,omitempty"`
-		HasChildren bool     `json:"has_children"`
-		ParentID    string   `json:"parent_id,omitempty"`
-		ChildIDs    []string `json:"child_ids,omitempty"`
+	protoItems := make([]*treev1.SubtreeItem, len(items))
+	for i, item := range items {
+		protoItems[i] = mappers.ToProtoSubtreeItem(item)
 	}
-
-	out := make([]respItem, 0, len(items))
-	for _, n := range items {
-		out = append(out, respItem{
-			ID:          n.ItemID,
-			Label:       n.Label,
-			Level:       n.Level,
-			Description: n.Description,
-			SummaryHTML: n.SummaryHTML,
-			HasChildren: n.HasChildren,
-			ParentID:    n.ParentID,
-			ChildIDs:    n.ChildIDs,
-		})
-	}
-	handlerutil.WriteJSON(w, out)
+	return connect.NewResponse(&treev1.GetSubtreeResponse{Items: protoItems}), nil
 }
 
 func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1.FindPathsRequest]) (*connect.Response[treev1.FindPathsResponse], error) {

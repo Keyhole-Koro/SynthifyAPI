@@ -41,7 +41,6 @@ func main() {
 	mux.Handle(treev1connect.NewJobServiceHandler(jobHandler))
 	mux.Handle(treev1connect.NewTreeServiceHandler(treeHandler))
 	mux.Handle(treev1connect.NewItemServiceHandler(handler.NewItemHandler(itemService, store, store)))
-	mux.HandleFunc("GET /tree/subtree", treeHandler.GetSubtreeHTTP)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, `{"status":"ok"}`)
