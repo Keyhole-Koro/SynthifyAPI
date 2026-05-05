@@ -24,6 +24,9 @@ func currentUser(ctx context.Context) (middleware.AuthUser, error) {
 }
 
 func authorizeWorkspace(ctx context.Context, repo repository.WorkspaceRepository, workspaceID string) error {
+	if middleware.AnonymousReadAllowed(ctx) {
+		return nil
+	}
 	user, err := currentUser(ctx)
 	if err != nil {
 		return err

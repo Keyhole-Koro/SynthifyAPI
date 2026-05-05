@@ -47,14 +47,17 @@ func main() {
 	})
 
 	h := middleware.Recover(
-		middleware.Logger(
-			middleware.CORS(cfg.CORSAllowedOrigins,
-				middleware.WithAuth(cfg.FirebaseProjectID,
-					withJobLogger(jobLogger, mux),
-				),
-			),
-		),
+	        middleware.Logger(
+	                middleware.CORS(cfg.CORSAllowedOrigins,
+	                     // Only allow anonymous read (for tools like log-viewer) in local development.
+	                     // TODO: Move to service-level auth or restricted VPN access for tools in production.
+	                     middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local",
+	                     withJobLogger(jobLogger, mux),
+	                     ),
+	                ),
+	        ),
 	)
+
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Synthify API listening on %s", addr)
 	if err := http.ListenAndServe(addr, h); err != nil {
