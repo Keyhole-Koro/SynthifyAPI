@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/repository/mock"
 )
@@ -13,13 +14,9 @@ func createWorkspaceForUser(t *testing.T, store *mock.Store, userID string) stri
 	t.Helper()
 	ctx := context.Background()
 	acct, err := store.GetOrCreateAccount(ctx, userID)
-	if err != nil {
-		t.Fatalf("GetOrCreateAccount: %v", err)
-	}
+	require.NoError(t, err, "GetOrCreateAccount")
 	ws := store.CreateWorkspace(ctx, acct.AccountID, "test-workspace")
-	if ws == nil {
-		t.Fatal("CreateWorkspace returned nil")
-	}
+	require.NotNil(t, ws, "CreateWorkspace returned nil")
 	return ws.WorkspaceID
 }
 
@@ -30,9 +27,7 @@ func TestGetWorkspace_NonMember_ReturnsErrNotFound(t *testing.T) {
 	svc := NewWorkspaceService(store, store)
 
 	_, err := svc.GetWorkspace(ctx, wsID, "stranger")
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("GetWorkspace non-member: err = %v, want ErrNotFound", err)
-	}
+	assert.ErrorIs(t, err, domain.ErrNotFound, "GetWorkspace non-member")
 }
 
 func TestGetWorkspace_Member_ReturnsWorkspace(t *testing.T) {
@@ -42,12 +37,8 @@ func TestGetWorkspace_Member_ReturnsWorkspace(t *testing.T) {
 	svc := NewWorkspaceService(store, store)
 
 	got, err := svc.GetWorkspace(ctx, wsID, "owner")
-	if err != nil {
-		t.Fatalf("GetWorkspace: unexpected error: %v", err)
-	}
-	if got.WorkspaceID != wsID {
-		t.Errorf("workspace ID = %q, want %q", got.WorkspaceID, wsID)
-	}
+	require.NoError(t, err, "GetWorkspace")
+	assert.Equal(t, wsID, got.WorkspaceID, "workspace ID")
 }
 
 func TestGetWorkspace_UnknownID_ReturnsErrNotFound(t *testing.T) {
@@ -56,9 +47,7 @@ func TestGetWorkspace_UnknownID_ReturnsErrNotFound(t *testing.T) {
 	svc := NewWorkspaceService(store, store)
 
 	_, err := svc.GetWorkspace(ctx, "nonexistent_ws", "anyone")
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("GetWorkspace unknown ID: err = %v, want ErrNotFound", err)
-	}
+	assert.ErrorIs(t, err, domain.ErrNotFound, "GetWorkspace unknown ID")
 }
 
 func TestCreateWorkspace_NewUser_CreatesWorkspace(t *testing.T) {
@@ -67,13 +56,7 @@ func TestCreateWorkspace_NewUser_CreatesWorkspace(t *testing.T) {
 	svc := NewWorkspaceService(store, store)
 
 	ws, err := svc.CreateWorkspace(ctx, "my-workspace", "new_user")
-	if err != nil {
-		t.Fatalf("CreateWorkspace: unexpected error: %v", err)
-	}
-	if ws == nil {
-		t.Fatal("CreateWorkspace returned nil workspace")
-	}
-	if ws.Name != "my-workspace" {
-		t.Errorf("workspace.Name = %q, want my-workspace", ws.Name)
-	}
+	require.NoError(t, err, "CreateWorkspace")
+	require.NotNil(t, ws, "CreateWorkspace returned nil workspace")
+	assert.Equal(t, "my-workspace", ws.Name, "workspace.Name")
 }

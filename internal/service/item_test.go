@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/synthify/backend/packages/shared/repository/mock"
 )
 
@@ -24,10 +26,6 @@ func TestCreateItem_CreatesItem(t *testing.T) {
 	repo.CreateWorkspace(ctx, "acct-1", "Test")
 
 	item, err := svc.CreateItem(ctx, wsID, "root", "root desc", "", "system")
-	if err != nil {
-		t.Fatalf("CreateItem: %v", err)
-	}
-	if item == nil {
-		t.Fatal("expected item, got nil")
-	}
+	require.NoError(t, err, "CreateItem")
+	assert.NotNil(t, item, "expected item, got nil")
 }

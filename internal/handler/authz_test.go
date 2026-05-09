@@ -2,10 +2,11 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	connect "connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository/mock"
@@ -14,16 +15,10 @@ import (
 // assertConnectCode fails the test if err is nil or does not carry the expected connect code.
 func assertConnectCode(t *testing.T, err error, want connect.Code) {
 	t.Helper()
-	if err == nil {
-		t.Fatalf("expected error with code %v, got nil", want)
-	}
+	require.Error(t, err, "expected error with code %v, got nil", want)
 	var ce *connect.Error
-	if !errors.As(err, &ce) {
-		t.Fatalf("expected *connect.Error, got %T: %v", err, err)
-	}
-	if ce.Code() != want {
-		t.Errorf("connect code = %v, want %v", ce.Code(), want)
-	}
+	require.ErrorAs(t, err, &ce, "expected *connect.Error")
+	assert.Equal(t, want, ce.Code(), "connect code")
 }
 
 // setupWorkspaceInStore creates an account and workspace for a given userID.
@@ -31,13 +26,9 @@ func setupWorkspaceInStore(t *testing.T, store *mock.Store, userID string) strin
 	t.Helper()
 	ctx := context.Background()
 	acct, err := store.GetOrCreateAccount(ctx, userID)
-	if err != nil {
-		t.Fatalf("GetOrCreateAccount: %v", err)
-	}
+	require.NoError(t, err, "GetOrCreateAccount")
 	ws := store.CreateWorkspace(ctx, acct.AccountID, "test-workspace")
-	if ws == nil {
-		t.Fatal("CreateWorkspace returned nil")
-	}
+	require.NotNil(t, ws, "CreateWorkspace returned nil")
 	return ws.WorkspaceID
 }
 
@@ -48,9 +39,7 @@ func setupItemFixturesInStore(t *testing.T, store *mock.Store, userID string) st
 	ctx := context.Background()
 	wsID := setupWorkspaceInStore(t, store, userID)
 	g, err := store.GetOrCreateTree(ctx, wsID)
-	if err != nil {
-		t.Fatalf("GetOrCreateTree: %v", err)
-	}
+	require.NoError(t, err, "GetOrCreateTree")
 	doc, _ := store.CreateDocument(ctx, wsID, userID, "f.pdf", "application/pdf", 100)
 	store.CreateProcessingJob(ctx, doc.DocumentID, g.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	return wsID
@@ -72,12 +61,8 @@ func TestCurrentUser_EmptyUserID_ReturnsUnauthenticated(t *testing.T) {
 func TestCurrentUser_ValidUser_ReturnsUser(t *testing.T) {
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "u1", Email: "u@example.com"})
 	user, err := currentUser(ctx)
-	if err != nil {
-		t.Fatalf("currentUser: unexpected error: %v", err)
-	}
-	if user.ID != "u1" {
-		t.Errorf("user.ID = %q, want u1", user.ID)
-	}
+	require.NoError(t, err, "currentUser")
+	assert.Equal(t, "u1", user.ID, "user.ID")
 }
 
 // ── authorizeWorkspace ────────────────────────────────────────────────────────
@@ -102,9 +87,8 @@ func TestAuthorizeWorkspace_Member_ReturnsNil(t *testing.T) {
 	wsID := setupWorkspaceInStore(t, store, "owner")
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
-	if err := authorizeWorkspace(ctx, store, wsID); err != nil {
-		t.Errorf("authorizeWorkspace: unexpected error: %v", err)
-	}
+	err := authorizeWorkspace(ctx, store, wsID)
+	assert.NoError(t, err, "authorizeWorkspace")
 }
 
 // ── authorizeDocument ─────────────────────────────────────────────────────────
@@ -147,9 +131,8 @@ func TestAuthorizeDocument_Member_ReturnsNil(t *testing.T) {
 	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
-	if err := authorizeDocument(authedCtx, store, store, doc.DocumentID, ""); err != nil {
-		t.Errorf("authorizeDocument: unexpected error: %v", err)
-	}
+	err := authorizeDocument(authedCtx, store, store, doc.DocumentID, "")
+	assert.NoError(t, err, "authorizeDocument")
 }
 
 // ── authorizeItem ─────────────────────────────────────────────────────────────
@@ -167,9 +150,8 @@ func TestAuthorizeItem_ValidItem_AuthorizesViaWorkspace(t *testing.T) {
 	wsID := setupItemFixturesInStore(t, store, "owner")
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
-	if err := authorizeItem(ctx, store, store, "nd_root", wsID); err != nil {
-		t.Errorf("authorizeItem: unexpected error: %v", err)
-	}
+	err := authorizeItem(ctx, store, store, "nd_root", wsID)
+	assert.NoError(t, err, "authorizeItem")
 }
 
 func TestAuthorizeItem_NotMember_ReturnsPermissionDenied(t *testing.T) {
