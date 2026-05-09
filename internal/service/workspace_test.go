@@ -10,20 +10,10 @@ import (
 	"github.com/synthify/backend/packages/shared/repository/mock"
 )
 
-func createWorkspaceForUser(t *testing.T, store *mock.Store, userID string) string {
-	t.Helper()
-	ctx := context.Background()
-	acct, err := store.GetOrCreateAccount(ctx, userID)
-	require.NoError(t, err, "GetOrCreateAccount")
-	ws := store.CreateWorkspace(ctx, acct.AccountID, "test-workspace")
-	require.NotNil(t, ws, "CreateWorkspace returned nil")
-	return ws.WorkspaceID
-}
-
 func TestGetWorkspace_NonMember_ReturnsErrNotFound(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	wsID := createWorkspaceForUser(t, store, "owner")
+	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
 	svc := NewWorkspaceService(store, store)
 
 	_, err := svc.GetWorkspace(ctx, wsID, "stranger")
@@ -33,7 +23,7 @@ func TestGetWorkspace_NonMember_ReturnsErrNotFound(t *testing.T) {
 func TestGetWorkspace_Member_ReturnsWorkspace(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	wsID := createWorkspaceForUser(t, store, "owner")
+	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
 	svc := NewWorkspaceService(store, store)
 
 	got, err := svc.GetWorkspace(ctx, wsID, "owner")

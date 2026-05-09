@@ -21,28 +21,15 @@ func assertConnectCode(t *testing.T, err error, want connect.Code) {
 	assert.Equal(t, want, ce.Code(), "connect code")
 }
 
-// setupWorkspaceInStore creates an account and workspace for a given userID.
-func setupWorkspaceInStore(t *testing.T, store *mock.Store, userID string) string {
-	t.Helper()
-	ctx := context.Background()
-	acct, err := store.GetOrCreateAccount(ctx, userID)
-	require.NoError(t, err, "GetOrCreateAccount")
-	ws := store.CreateWorkspace(ctx, acct.AccountID, "test-workspace")
-	require.NotNil(t, ws, "CreateWorkspace returned nil")
-	return ws.WorkspaceID
-}
-
 // setupItemFixturesInStore creates workspace + tree + seed items in the store.
 // Returns workspaceID.
 func setupItemFixturesInStore(t *testing.T, store *mock.Store, userID string) string {
 	t.Helper()
 	ctx := context.Background()
-	wsID := setupWorkspaceInStore(t, store, userID)
-	g, err := store.GetOrCreateTree(ctx, wsID)
-	require.NoError(t, err, "GetOrCreateTree")
-	doc, _ := store.CreateDocument(ctx, wsID, userID, "f.pdf", "application/pdf", 100)
-	store.CreateProcessingJob(ctx, doc.DocumentID, g.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
-	return wsID
+	fixture := mock.CreateWorkspaceWithTreeFixture(t, ctx, store, userID)
+	doc, _ := store.CreateDocument(ctx, fixture.Workspace.WorkspaceID, userID, "f.pdf", "application/pdf", 100)
+	store.CreateProcessingJob(ctx, doc.DocumentID, fixture.Tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
+	return fixture.Workspace.WorkspaceID
 }
 
 // ── currentUser ──────────────────────────────────────────────────────────────
@@ -75,7 +62,7 @@ func TestAuthorizeWorkspace_Unauthenticated_ReturnsUnauthenticated(t *testing.T)
 
 func TestAuthorizeWorkspace_NotMember_ReturnsPermissionDenied(t *testing.T) {
 	store := mock.NewStore()
-	wsID := setupWorkspaceInStore(t, store, "owner")
+	wsID := mock.CreateUserWorkspaceFixture(t, context.Background(), store, "owner").Workspace.WorkspaceID
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "stranger", Email: "s@example.com"})
 
 	err := authorizeWorkspace(ctx, store, wsID)
@@ -84,7 +71,7 @@ func TestAuthorizeWorkspace_NotMember_ReturnsPermissionDenied(t *testing.T) {
 
 func TestAuthorizeWorkspace_Member_ReturnsNil(t *testing.T) {
 	store := mock.NewStore()
-	wsID := setupWorkspaceInStore(t, store, "owner")
+	wsID := mock.CreateUserWorkspaceFixture(t, context.Background(), store, "owner").Workspace.WorkspaceID
 	ctx := middleware.ContextWithUser(context.Background(), middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
 	err := authorizeWorkspace(ctx, store, wsID)
@@ -104,8 +91,8 @@ func TestAuthorizeDocument_DocumentNotFound_ReturnsNotFound(t *testing.T) {
 func TestAuthorizeDocument_WrongWorkspace_ReturnsPermissionDenied(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	ws1ID := setupWorkspaceInStore(t, store, "owner")
-	ws2ID := setupWorkspaceInStore(t, store, "owner2")
+	ws1ID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
+	ws2ID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner2").Workspace.WorkspaceID
 	doc, _ := store.CreateDocument(ctx, ws1ID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
@@ -116,7 +103,7 @@ func TestAuthorizeDocument_WrongWorkspace_ReturnsPermissionDenied(t *testing.T) 
 func TestAuthorizeDocument_NotMember_ReturnsPermissionDenied(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	wsID := setupWorkspaceInStore(t, store, "owner")
+	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
 	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "stranger", Email: "s@example.com"})
 
@@ -127,7 +114,7 @@ func TestAuthorizeDocument_NotMember_ReturnsPermissionDenied(t *testing.T) {
 func TestAuthorizeDocument_Member_ReturnsNil(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	wsID := setupWorkspaceInStore(t, store, "owner")
+	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
 	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 

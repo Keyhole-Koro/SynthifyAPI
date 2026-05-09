@@ -7,6 +7,7 @@ import (
 
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
+	"github.com/synthify/backend/packages/shared/joblifecycle"
 	"github.com/synthify/backend/packages/shared/joblog"
 	"github.com/synthify/backend/packages/shared/jobstatus"
 	"github.com/synthify/backend/packages/shared/repository"
@@ -22,6 +23,7 @@ type DocumentService struct {
 	tree             repository.TreeRepository
 	sourceURLBuilder repository.DocumentSourceURLBuilder
 	dispatcher       WorkerDispatcher
+	lifecycle        *joblifecycle.Service
 	notifier         jobstatus.Notifier
 }
 
@@ -37,6 +39,7 @@ func NewDocumentService(
 		tree:             tree,
 		sourceURLBuilder: sourceURLBuilder,
 		dispatcher:       dispatcher,
+		lifecycle:        joblifecycle.New(repo, notifier, nil),
 		notifier:         notifier,
 	}
 }
@@ -58,72 +61,49 @@ func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, 
 }
 
 func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID string, forceReprocess bool) (*domain.DocumentProcessingJob, error) {
+	jobType := treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT
+	if forceReprocess {
+		jobType = treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT
+	}
+	return s.startProcessingJob(ctx, wsID, documentID, jobType, false)
+}
+
+func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID string) (*domain.DocumentProcessingJob, error) {
+	return s.startProcessingJob(ctx, wsID, documentID, treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT, true)
+}
+
+func (s *DocumentService) startProcessingJob(ctx context.Context, wsID, documentID string, jobType treev1.JobType, resumeExisting bool) (*domain.DocumentProcessingJob, error) {
 	doc, err := s.repo.GetDocument(ctx, documentID)
 	if err != nil {
+		if resumeExisting {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
+	}
+	if resumeExisting {
+		if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
+			switch latest.Status {
+			case treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
+				treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_QUEUED:
+				return latest, nil
+			}
+		}
 	}
 	tree, err := s.tree.GetOrCreateTree(ctx, wsID)
 	if err != nil {
 		return nil, err
 	}
-	jobType := treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT
-	if forceReprocess {
-		jobType = treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT
-	}
 	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, jobType)
 	if job == nil {
 		return nil, domain.ErrNotFound
 	}
-	if s.notifier != nil {
-		s.notifier.Queued(ctx, jobstatus.Payload{
-			JobID:       job.JobID,
-			JobType:     job.JobType.String(),
-			DocumentID:  documentID,
-			WorkspaceID: wsID,
-			TreeID:      tree.TreeID,
-		})
-	}
-	joblog.FromContext(ctx).Log(ctx, joblog.Event{
-		JobID:       job.JobID,
-		WorkspaceID: wsID,
-		DocumentID:  documentID,
-		Level:       joblog.INFO,
-		Event:       "job.queued",
-		Message:     fmt.Sprintf("job queued: doc=%s type=%s", documentID, jobType),
-		Detail:      map[string]any{"type": jobType.String()},
-	})
+	payload := documentJobPayload(job, documentID, wsID, tree.TreeID)
+	s.lifecycle.NotifyQueued(ctx, payload)
+	s.logJobQueued(ctx, job, wsID, documentID)
 	if s.dispatcher != nil {
-		dispatchReq := domain.ExecutePlanRequest{
-			JobID:       job.JobID,
-			JobType:     job.JobType.String(),
-			DocumentID:  documentID,
-			WorkspaceID: wsID,
-			TreeID:      tree.TreeID,
-			FileURI:     s.sourceURLBuilder(wsID, doc.DocumentID),
-			Filename:    doc.Filename,
-			MimeType:    doc.MimeType,
-		}
+		dispatchReq := s.buildExecutePlanRequest(job, doc, wsID, tree.TreeID)
 		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
-			joblog.FromContext(ctx).Log(ctx, joblog.Event{
-				JobID:       job.JobID,
-				WorkspaceID: wsID,
-				DocumentID:  documentID,
-				Level:       joblog.ERROR,
-				Event:       "job.dispatch_failed",
-				Message:     fmt.Sprintf("job dispatch failed: %v", err),
-				Detail:      map[string]any{"error": err.Error()},
-			})
-			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
-			if s.notifier != nil {
-				_ = s.notifier.Failed(ctx, jobstatus.Payload{
-					JobID:       job.JobID,
-					JobType:     job.JobType.String(),
-					DocumentID:  documentID,
-					WorkspaceID: wsID,
-					TreeID:      tree.TreeID,
-				}, err.Error())
-			}
-			return job, nil
+			return s.handleDispatchFailure(ctx, job, payload, wsID, documentID, err, !resumeExisting), nil
 		}
 		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
 			if errors.Is(err, domain.ErrApprovalRequired) || errors.Is(err, domain.ErrPlanRejected) {
@@ -132,29 +112,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 				}
 				return job, nil
 			}
-			joblog.FromContext(ctx).Log(ctx, joblog.Event{
-				JobID:       job.JobID,
-				WorkspaceID: wsID,
-				DocumentID:  documentID,
-				Level:       joblog.ERROR,
-				Event:       "job.dispatch_failed",
-				Message:     fmt.Sprintf("job dispatch failed: %v", err),
-				Detail:      map[string]any{"error": err.Error()},
-			})
-			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
-			if s.notifier != nil {
-				_ = s.notifier.Failed(ctx, jobstatus.Payload{
-					JobID:       job.JobID,
-					JobType:     job.JobType.String(),
-					DocumentID:  documentID,
-					WorkspaceID: wsID,
-					TreeID:      tree.TreeID,
-				}, err.Error())
-			}
-			if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
-				return latest, nil
-			}
-			return job, nil
+			return s.handleDispatchFailure(ctx, job, payload, wsID, documentID, err, true), nil
 		}
 	}
 	if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
@@ -163,36 +121,20 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 	return job, nil
 }
 
-func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID string) (*domain.DocumentProcessingJob, error) {
-	doc, err := s.repo.GetDocument(ctx, documentID)
-	if err != nil {
-		return nil, domain.ErrNotFound
+func (s *DocumentService) buildExecutePlanRequest(job *domain.DocumentProcessingJob, doc *domain.Document, wsID, treeID string) domain.ExecutePlanRequest {
+	return domain.ExecutePlanRequest{
+		JobID:       job.JobID,
+		JobType:     job.JobType.String(),
+		DocumentID:  doc.DocumentID,
+		WorkspaceID: wsID,
+		TreeID:      treeID,
+		FileURI:     s.sourceURLBuilder(wsID, doc.DocumentID),
+		Filename:    doc.Filename,
+		MimeType:    doc.MimeType,
 	}
-	if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
-		switch latest.Status {
-		case treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
-			treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_QUEUED:
-			return latest, nil
-		}
-	}
+}
 
-	tree, err := s.tree.GetOrCreateTree(ctx, wsID)
-	if err != nil {
-		return nil, err
-	}
-	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT)
-	if job == nil {
-		return nil, domain.ErrNotFound
-	}
-	if s.notifier != nil {
-		s.notifier.Queued(ctx, jobstatus.Payload{
-			JobID:       job.JobID,
-			JobType:     job.JobType.String(),
-			DocumentID:  documentID,
-			WorkspaceID: wsID,
-			TreeID:      tree.TreeID,
-		})
-	}
+func (s *DocumentService) logJobQueued(ctx context.Context, job *domain.DocumentProcessingJob, wsID, documentID string) {
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
 		WorkspaceID: wsID,
@@ -202,75 +144,35 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 		Message:     fmt.Sprintf("job queued: doc=%s type=%s", documentID, job.JobType),
 		Detail:      map[string]any{"type": job.JobType.String()},
 	})
-	if s.dispatcher != nil {
-		dispatchReq := domain.ExecutePlanRequest{
-			JobID:       job.JobID,
-			JobType:     job.JobType.String(),
-			DocumentID:  documentID,
-			WorkspaceID: wsID,
-			TreeID:      tree.TreeID,
-			FileURI:     s.sourceURLBuilder(wsID, doc.DocumentID),
-			Filename:    doc.Filename,
-			MimeType:    doc.MimeType,
-		}
-		if err := s.dispatcher.GenerateExecutionPlan(ctx, dispatchReq); err != nil {
-			joblog.FromContext(ctx).Log(ctx, joblog.Event{
-				JobID:       job.JobID,
-				WorkspaceID: wsID,
-				DocumentID:  documentID,
-				Level:       joblog.ERROR,
-				Event:       "job.dispatch_failed",
-				Message:     fmt.Sprintf("job dispatch failed: %v", err),
-				Detail:      map[string]any{"error": err.Error()},
-			})
-			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
-			if s.notifier != nil {
-				_ = s.notifier.Failed(ctx, jobstatus.Payload{
-					JobID:       job.JobID,
-					JobType:     job.JobType.String(),
-					DocumentID:  documentID,
-					WorkspaceID: wsID,
-					TreeID:      tree.TreeID,
-				}, err.Error())
-			}
-			return job, nil
-		}
-		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
-			if errors.Is(err, domain.ErrApprovalRequired) || errors.Is(err, domain.ErrPlanRejected) {
-				if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
-					return latest, nil
-				}
-				return job, nil
-			}
-			joblog.FromContext(ctx).Log(ctx, joblog.Event{
-				JobID:       job.JobID,
-				WorkspaceID: wsID,
-				DocumentID:  documentID,
-				Level:       joblog.ERROR,
-				Event:       "job.dispatch_failed",
-				Message:     fmt.Sprintf("job dispatch failed: %v", err),
-				Detail:      map[string]any{"error": err.Error()},
-			})
-			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
-			if s.notifier != nil {
-				_ = s.notifier.Failed(ctx, jobstatus.Payload{
-					JobID:       job.JobID,
-					JobType:     job.JobType.String(),
-					DocumentID:  documentID,
-					WorkspaceID: wsID,
-					TreeID:      tree.TreeID,
-				}, err.Error())
-			}
-			if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
-				return latest, nil
-			}
-			return job, nil
+}
+
+func (s *DocumentService) handleDispatchFailure(ctx context.Context, job *domain.DocumentProcessingJob, payload jobstatus.Payload, wsID, documentID string, dispatchErr error, reloadLatest bool) *domain.DocumentProcessingJob {
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       job.JobID,
+		WorkspaceID: wsID,
+		DocumentID:  documentID,
+		Level:       joblog.ERROR,
+		Event:       "job.dispatch_failed",
+		Message:     fmt.Sprintf("job dispatch failed: %v", dispatchErr),
+		Detail:      map[string]any{"error": dispatchErr.Error()},
+	})
+	s.lifecycle.TryFail(ctx, payload, dispatchErr.Error())
+	if reloadLatest {
+		if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
+			return latest
 		}
 	}
-	if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
-		job = latest
+	return job
+}
+
+func documentJobPayload(job *domain.DocumentProcessingJob, documentID, wsID, treeID string) jobstatus.Payload {
+	return jobstatus.Payload{
+		JobID:       job.JobID,
+		JobType:     job.JobType.String(),
+		DocumentID:  documentID,
+		WorkspaceID: wsID,
+		TreeID:      treeID,
 	}
-	return job, nil
 }
 
 func (s *DocumentService) GetLatestProcessingJob(ctx context.Context, documentID string) (*domain.DocumentProcessingJob, error) {
