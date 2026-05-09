@@ -37,9 +37,9 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 	if err := authorizeWorkspace(ctx, h.workspaces, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	items, ok := h.repo.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	items, err := h.repo.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 
 	tree := &treev1.Tree{
@@ -101,9 +101,9 @@ func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1
 		return nil, handlerutil.ToConnectError(err)
 	}
 
-	items, paths, ok := h.repo.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	items, paths, err := h.repo.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 
 	protoTree := &treev1.Tree{

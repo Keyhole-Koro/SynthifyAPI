@@ -37,9 +37,9 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
-	plan, ok := h.repo.GetJobExecutionPlan(ctx, req.Msg.GetJobId())
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	plan, err := h.repo.GetJobExecutionPlan(ctx, req.Msg.GetJobId())
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.GetJobExecutionPlanResponse{
 		Plan: mappers.ToProtoExecutionPlan(plan),
@@ -50,9 +50,9 @@ func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.R
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
-	requests, ok := h.repo.ListJobApprovalRequests(ctx, req.Msg.GetJobId())
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	requests, err := h.repo.ListJobApprovalRequests(ctx, req.Msg.GetJobId())
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	res := connect.NewResponse(&treev1.ListJobApprovalRequestsResponse{})
 	for _, request := range requests {
@@ -70,9 +70,9 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, err
 	}
-	approval, ok := h.repo.RequestJobApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	approval, err := h.repo.RequestJobApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
@@ -98,8 +98,8 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 	if req.Msg.GetApprovalId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
-	if !h.repo.ApproveJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID) {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	if err := h.repo.ApproveJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
@@ -125,8 +125,8 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 	if req.Msg.GetApprovalId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
-	if !h.repo.RejectJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()) {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	if err := h.repo.RejectJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
@@ -144,9 +144,9 @@ func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Reque
 	if _, err := h.authorizeAndLoadJob(ctx, req.Msg.GetJobId()); err != nil {
 		return nil, err
 	}
-	logs, ok := h.repo.ListJobMutationLogs(ctx, req.Msg.GetJobId())
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	logs, err := h.repo.ListJobMutationLogs(ctx, req.Msg.GetJobId())
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	res := connect.NewResponse(&treev1.ListJobMutationLogsResponse{})
 	for _, log := range logs {
@@ -163,9 +163,9 @@ func (h *JobHandler) ListJobLogs(ctx context.Context, req *connect.Request[treev
 	if limit <= 0 {
 		limit = 500
 	}
-	logs, nextToken, ok := h.repo.ListJobLogs(ctx, req.Msg.GetJobId(), req.Msg.GetPageToken(), limit)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list job logs"))
+	logs, nextToken, err := h.repo.ListJobLogs(ctx, req.Msg.GetJobId(), req.Msg.GetPageToken(), limit)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to list job logs: %w", err))
 	}
 	res := connect.NewResponse(&treev1.ListJobLogsResponse{
 		NextPageToken: nextToken,
@@ -244,9 +244,9 @@ func (h *JobHandler) ListRelatedJobLogs(ctx context.Context, req *connect.Reques
 
 func (h *JobHandler) ListAllJobs(ctx context.Context, _ *connect.Request[treev1.ListAllJobsRequest]) (*connect.Response[treev1.ListAllJobsResponse], error) {
 	// TODO: Add global admin authorization check here
-	jobs, ok := h.repo.ListAllJobs(ctx)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, domain.ErrNotFound)
+	jobs, err := h.repo.ListAllJobs(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	res := connect.NewResponse(&treev1.ListAllJobsResponse{})
 	for _, job := range jobs {
@@ -259,9 +259,9 @@ func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*do
 	if jobID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
 	}
-	job, ok := h.repo.GetProcessingJob(ctx, jobID)
-	if !ok {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+	job, err := h.repo.GetProcessingJob(ctx, jobID)
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, job.DocumentID, ""); err != nil {
 		return nil, err

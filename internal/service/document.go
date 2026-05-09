@@ -46,9 +46,9 @@ func (s *DocumentService) ListDocuments(ctx context.Context, workspaceID string)
 }
 
 func (s *DocumentService) GetDocument(ctx context.Context, documentID string) (*domain.Document, error) {
-	doc, ok := s.repo.GetDocument(ctx, documentID)
-	if !ok {
-		return nil, domain.ErrNotFound
+	doc, err := s.repo.GetDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
 	}
 	return doc, nil
 }
@@ -58,9 +58,9 @@ func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, 
 }
 
 func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID string, forceReprocess bool) (*domain.DocumentProcessingJob, error) {
-	doc, ok := s.repo.GetDocument(ctx, documentID)
-	if !ok {
-		return nil, domain.ErrNotFound
+	doc, err := s.repo.GetDocument(ctx, documentID)
+	if err != nil {
+		return nil, err
 	}
 	tree, err := s.tree.GetOrCreateTree(ctx, wsID)
 	if err != nil {
@@ -113,9 +113,9 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 				Message:     fmt.Sprintf("job dispatch failed: %v", err),
 				Detail:      map[string]any{"error": err.Error()},
 			})
-			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
-				s.notifier.Failed(ctx, jobstatus.Payload{
+				_ = s.notifier.Failed(ctx, jobstatus.Payload{
 					JobID:       job.JobID,
 					JobType:     job.JobType.String(),
 					DocumentID:  documentID,
@@ -127,7 +127,7 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 		}
 		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
 			if errors.Is(err, domain.ErrApprovalRequired) || errors.Is(err, domain.ErrPlanRejected) {
-				if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+				if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 					return latest, nil
 				}
 				return job, nil
@@ -141,9 +141,9 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 				Message:     fmt.Sprintf("job dispatch failed: %v", err),
 				Detail:      map[string]any{"error": err.Error()},
 			})
-			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
-				s.notifier.Failed(ctx, jobstatus.Payload{
+				_ = s.notifier.Failed(ctx, jobstatus.Payload{
 					JobID:       job.JobID,
 					JobType:     job.JobType.String(),
 					DocumentID:  documentID,
@@ -151,24 +151,24 @@ func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID 
 					TreeID:      tree.TreeID,
 				}, err.Error())
 			}
-			if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+			if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 				return latest, nil
 			}
 			return job, nil
 		}
 	}
-	if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+	if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 		job = latest
 	}
 	return job, nil
 }
 
 func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID string) (*domain.DocumentProcessingJob, error) {
-	doc, ok := s.repo.GetDocument(ctx, documentID)
-	if !ok {
+	doc, err := s.repo.GetDocument(ctx, documentID)
+	if err != nil {
 		return nil, domain.ErrNotFound
 	}
-	if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+	if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 		switch latest.Status {
 		case treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
 			treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_QUEUED:
@@ -223,9 +223,9 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 				Message:     fmt.Sprintf("job dispatch failed: %v", err),
 				Detail:      map[string]any{"error": err.Error()},
 			})
-			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
-				s.notifier.Failed(ctx, jobstatus.Payload{
+				_ = s.notifier.Failed(ctx, jobstatus.Payload{
 					JobID:       job.JobID,
 					JobType:     job.JobType.String(),
 					DocumentID:  documentID,
@@ -237,7 +237,7 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 		}
 		if err := s.dispatcher.ExecuteApprovedPlan(ctx, dispatchReq); err != nil {
 			if errors.Is(err, domain.ErrApprovalRequired) || errors.Is(err, domain.ErrPlanRejected) {
-				if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+				if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 					return latest, nil
 				}
 				return job, nil
@@ -251,9 +251,9 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 				Message:     fmt.Sprintf("job dispatch failed: %v", err),
 				Detail:      map[string]any{"error": err.Error()},
 			})
-			s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
+			_ = s.repo.FailProcessingJob(ctx, job.JobID, err.Error())
 			if s.notifier != nil {
-				s.notifier.Failed(ctx, jobstatus.Payload{
+				_ = s.notifier.Failed(ctx, jobstatus.Payload{
 					JobID:       job.JobID,
 					JobType:     job.JobType.String(),
 					DocumentID:  documentID,
@@ -261,22 +261,22 @@ func (s *DocumentService) ResumeProcessing(ctx context.Context, wsID, documentID
 					TreeID:      tree.TreeID,
 				}, err.Error())
 			}
-			if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+			if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 				return latest, nil
 			}
 			return job, nil
 		}
 	}
-	if latest, ok := s.repo.GetLatestProcessingJob(ctx, documentID); ok {
+	if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
 		job = latest
 	}
 	return job, nil
 }
 
 func (s *DocumentService) GetLatestProcessingJob(ctx context.Context, documentID string) (*domain.DocumentProcessingJob, error) {
-	job, ok := s.repo.GetLatestProcessingJob(ctx, documentID)
-	if !ok {
-		return nil, domain.ErrNotFound
+	job, err := s.repo.GetLatestProcessingJob(ctx, documentID)
+	if err != nil {
+		return nil, err
 	}
 	return job, nil
 }

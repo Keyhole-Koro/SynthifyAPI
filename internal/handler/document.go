@@ -108,9 +108,9 @@ func (h *DocumentHandler) StartProcessing(ctx context.Context, req *connect.Requ
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, req.Msg.GetDocumentId(), ""); err != nil {
 		return nil, err
 	}
-	doc, ok := h.documents.GetDocument(ctx, req.Msg.GetDocumentId())
-	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("document not found"))
+	doc, err := h.documents.GetDocument(ctx, req.Msg.GetDocumentId())
+	if err != nil {
+		return nil, handlerutil.ToConnectError(err)
 	}
 	job, err := h.service.StartProcessing(ctx, doc.WorkspaceID, req.Msg.GetDocumentId(), req.Msg.GetForceReprocess())
 	if err != nil {

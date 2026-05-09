@@ -21,9 +21,9 @@ func (s *WorkspaceService) GetWorkspace(ctx context.Context, id, userID string) 
 	if !s.workspaces.IsWorkspaceAccessible(ctx, id, userID) {
 		return nil, domain.ErrNotFound
 	}
-	ws, ok := s.workspaces.GetWorkspace(ctx, id)
-	if !ok {
-		return nil, domain.ErrNotFound
+	ws, err := s.workspaces.GetWorkspace(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 	return ws, nil
 }
