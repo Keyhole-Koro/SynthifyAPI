@@ -29,6 +29,7 @@ func main() {
 	dispatcher := initDispatcher(cfg)
 
 	workspaceService := service.NewWorkspaceService(store, store)
+	billingService := service.NewBillingService(store, nil)
 	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), dispatcher, notifier)
 	itemService := service.NewItemService(store, store)
 
@@ -36,6 +37,7 @@ func main() {
 	jobHandler := handler.NewJobHandler(store, store, store)
 
 	mux := http.NewServeMux()
+	mux.Handle(treev1connect.NewBillingServiceHandler(handler.NewBillingHandler(billingService)))
 	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService, store)))
 	mux.Handle(treev1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.NewDocumentUploadURLBuilder(cfg.GCSUploadURLBase))))
 	mux.Handle(treev1connect.NewJobServiceHandler(jobHandler))
@@ -47,15 +49,15 @@ func main() {
 	})
 
 	h := middleware.Recover(
-	        middleware.Logger(
-	                middleware.CORS(cfg.CORSAllowedOrigins,
-	                     // Only allow anonymous read (for tools like log-viewer) in local development.
-	                     // TODO: Move to service-level auth or restricted VPN access for tools in production.
-	                     middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local",
-	                     withJobLogger(jobLogger, mux),
-	                     ),
-	                ),
-	        ),
+		middleware.Logger(
+			middleware.CORS(cfg.CORSAllowedOrigins,
+				// Only allow anonymous read (for tools like log-viewer) in local development.
+				// TODO: Move to service-level auth or restricted VPN access for tools in production.
+				middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local",
+					withJobLogger(jobLogger, mux),
+				),
+			),
+		),
 	)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
