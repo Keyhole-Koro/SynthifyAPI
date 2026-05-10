@@ -10,6 +10,7 @@ import (
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/handlerutil"
+	"github.com/synthify/backend/packages/shared/joblifecycle"
 	"github.com/synthify/backend/packages/shared/joblog"
 	"github.com/synthify/backend/packages/shared/mappers"
 	"github.com/synthify/backend/packages/shared/repository"
@@ -19,10 +20,16 @@ type JobHandler struct {
 	repo       repository.DocumentRepository
 	workspaces repository.WorkspaceRepository
 	documents  repository.DocumentRepository
+	lifecycle  *joblifecycle.Service
 }
 
 func NewJobHandler(jobRepo repository.DocumentRepository, workspaceRepo repository.WorkspaceRepository, documentRepo repository.DocumentRepository) *JobHandler {
-	return &JobHandler{repo: jobRepo, workspaces: workspaceRepo, documents: documentRepo}
+	return &JobHandler{
+		repo:       jobRepo,
+		workspaces: workspaceRepo,
+		documents:  documentRepo,
+		lifecycle:  joblifecycle.New(jobRepo, nil, nil),
+	}
 }
 
 func (h *JobHandler) GetJobStatus(ctx context.Context, req *connect.Request[treev1.GetJobStatusRequest]) (*connect.Response[treev1.GetJobStatusResponse], error) {
@@ -70,7 +77,7 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, err
 	}
-	approval, err := h.repo.RequestJobApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
+	approval, err := h.lifecycle.RequestApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
 	if err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
@@ -98,7 +105,7 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 	if req.Msg.GetApprovalId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
-	if err := h.repo.ApproveJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
+	if err := h.lifecycle.ApproveApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
@@ -125,7 +132,7 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 	if req.Msg.GetApprovalId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
-	if err := h.repo.RejectJobApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
+	if err := h.lifecycle.RejectApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
