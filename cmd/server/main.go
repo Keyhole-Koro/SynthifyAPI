@@ -27,13 +27,14 @@ func main() {
 	ctx := context.Background()
 	cfg := config.LoadAPI()
 
-	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
+	slogLogger := applog.NewJSONSlogLogger(os.Stdout)
+	appLogger := applog.WrapSlogLogger(slogLogger)
+
+	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID, appLogger)
 	store := appCtx.Store
 	notifier := appCtx.Notifier
 
 	jobLogger := postgres.NewDBLogger(store)
-	slogLogger := applog.NewJSONSlogLogger(os.Stdout)
-	appLogger := applog.WrapSlogLogger(slogLogger)
 	nrApp, err := observability.InitNewRelic(cfg, slogLogger)
 	if err != nil {
 		log.Fatalf("failed to initialize new relic: %v", err)
@@ -62,21 +63,19 @@ func main() {
 	}))
 
 	h := middleware.Recover(appLogger,
-	        middleware.Logger(appLogger,
-	                middleware.CORS(cfg.CORSAllowedOrigins,
-
+		middleware.Logger(appLogger,
+			middleware.CORS(cfg.CORSAllowedOrigins,
 				// Only allow anonymous read (for tools like log-viewer) in local development.
 				// TODO: Move to service-level auth or restricted VPN access for tools in production.
 				middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local", appLogger,
-				       withJobLogger(jobLogger, mux),
+					withJobLogger(jobLogger, mux),
 				),
-
 			),
 		),
 	)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
-	log.Printf("Synthify API listening on %s", addr)
+	appLogger.Info(ctx, "api.started", map[string]any{"addr": addr})
 	if err := http.ListenAndServe(addr, h); err != nil {
 		log.Fatal(err)
 	}
