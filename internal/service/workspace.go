@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/repository"
 )
@@ -11,10 +12,14 @@ import (
 type WorkspaceService struct {
 	accounts   repository.AccountRepository
 	workspaces repository.WorkspaceRepository
+	logger     applog.Logger
 }
 
-func NewWorkspaceService(accounts repository.AccountRepository, workspaces repository.WorkspaceRepository) *WorkspaceService {
-	return &WorkspaceService{accounts: accounts, workspaces: workspaces}
+func NewWorkspaceService(accounts repository.AccountRepository, workspaces repository.WorkspaceRepository, logger applog.Logger) *WorkspaceService {
+	if logger == nil {
+		logger = applog.NoopLogger{}
+	}
+	return &WorkspaceService{accounts: accounts, workspaces: workspaces, logger: logger}
 }
 
 func (s *WorkspaceService) GetWorkspace(ctx context.Context, id, userID string) (*domain.Workspace, error) {

@@ -14,7 +14,7 @@ func TestGetWorkspace_NonMember_ReturnsErrNotFound(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
 	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
-	svc := NewWorkspaceService(store, store)
+	svc := NewWorkspaceService(store, store, nil)
 
 	_, err := svc.GetWorkspace(ctx, wsID, "stranger")
 	assert.ErrorIs(t, err, domain.ErrNotFound, "GetWorkspace non-member")
@@ -24,7 +24,7 @@ func TestGetWorkspace_Member_ReturnsWorkspace(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
 	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
-	svc := NewWorkspaceService(store, store)
+	svc := NewWorkspaceService(store, store, nil)
 
 	got, err := svc.GetWorkspace(ctx, wsID, "owner")
 	require.NoError(t, err, "GetWorkspace")
@@ -34,7 +34,7 @@ func TestGetWorkspace_Member_ReturnsWorkspace(t *testing.T) {
 func TestGetWorkspace_UnknownID_ReturnsErrNotFound(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	svc := NewWorkspaceService(store, store)
+	svc := NewWorkspaceService(store, store, nil)
 
 	_, err := svc.GetWorkspace(ctx, "nonexistent_ws", "anyone")
 	assert.ErrorIs(t, err, domain.ErrNotFound, "GetWorkspace unknown ID")
@@ -43,7 +43,7 @@ func TestGetWorkspace_UnknownID_ReturnsErrNotFound(t *testing.T) {
 func TestCreateWorkspace_NewUser_CreatesWorkspace(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
-	svc := NewWorkspaceService(store, store)
+	svc := NewWorkspaceService(store, store, nil)
 
 	ws, err := svc.CreateWorkspace(ctx, "my-workspace", "new_user")
 	require.NoError(t, err, "CreateWorkspace")

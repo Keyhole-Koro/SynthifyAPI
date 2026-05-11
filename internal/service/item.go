@@ -3,17 +3,22 @@ package service
 import (
 	"context"
 
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/repository"
 )
 
 type ItemService struct {
-	repo repository.ItemRepository
-	tree repository.TreeRepository
+	repo   repository.ItemRepository
+	tree   repository.TreeRepository
+	logger applog.Logger
 }
 
-func NewItemService(repo repository.ItemRepository, tree repository.TreeRepository) *ItemService {
-	return &ItemService{repo: repo, tree: tree}
+func NewItemService(repo repository.ItemRepository, tree repository.TreeRepository, logger applog.Logger) *ItemService {
+	if logger == nil {
+		logger = applog.NoopLogger{}
+	}
+	return &ItemService{repo: repo, tree: tree, logger: logger}
 }
 
 func (s *ItemService) CreateItem(ctx context.Context, workspaceID, label, description, parentID, createdBy string) (*domain.Item, error) {

@@ -16,7 +16,7 @@ var (
 
 func TestMain(m *testing.M) {
 	repo = mock.NewStore()
-	svc = NewItemService(repo, repo)
+	svc = NewItemService(repo, repo, nil)
 	m.Run()
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	connect "connectrpc.com/connect"
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/handlerutil"
@@ -23,12 +24,15 @@ type JobHandler struct {
 	lifecycle  *joblifecycle.Service
 }
 
-func NewJobHandler(jobRepo repository.DocumentRepository, workspaceRepo repository.WorkspaceRepository, documentRepo repository.DocumentRepository) *JobHandler {
+func NewJobHandler(jobRepo repository.DocumentRepository, workspaceRepo repository.WorkspaceRepository, documentRepo repository.DocumentRepository, logger applog.Logger) *JobHandler {
+	if logger == nil {
+		logger = applog.NoopLogger{}
+	}
 	return &JobHandler{
 		repo:       jobRepo,
 		workspaces: workspaceRepo,
 		documents:  documentRepo,
-		lifecycle:  joblifecycle.New(jobRepo, nil, nil),
+		lifecycle:  joblifecycle.New(jobRepo, nil, logger),
 	}
 }
 

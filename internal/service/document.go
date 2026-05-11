@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/joblifecycle"
@@ -25,6 +26,7 @@ type DocumentService struct {
 	dispatcher       WorkerDispatcher
 	lifecycle        *joblifecycle.Service
 	notifier         jobstatus.Notifier
+	logger           applog.Logger
 }
 
 func NewDocumentService(
@@ -33,14 +35,19 @@ func NewDocumentService(
 	sourceURLBuilder repository.DocumentSourceURLBuilder,
 	dispatcher WorkerDispatcher,
 	notifier jobstatus.Notifier,
+	logger applog.Logger,
 ) *DocumentService {
+	if logger == nil {
+		logger = applog.NoopLogger{}
+	}
 	return &DocumentService{
 		repo:             repo,
 		tree:             tree,
 		sourceURLBuilder: sourceURLBuilder,
 		dispatcher:       dispatcher,
-		lifecycle:        joblifecycle.New(repo, notifier, nil),
+		lifecycle:        joblifecycle.New(repo, notifier, logger),
 		notifier:         notifier,
+		logger:           logger,
 	}
 }
 

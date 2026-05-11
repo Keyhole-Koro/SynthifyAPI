@@ -40,13 +40,13 @@ func main() {
 	}
 	dispatcher := initDispatcher(cfg)
 
-	workspaceService := service.NewWorkspaceService(store, store)
+	workspaceService := service.NewWorkspaceService(store, store, appLogger)
 	billingService := service.NewBillingService(store, nil, appLogger)
-	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), dispatcher, notifier)
-	itemService := service.NewItemService(store, store)
-
+	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), dispatcher, notifier, appLogger)
+	itemService := service.NewItemService(store, store, appLogger)
 	treeHandler := handler.NewTreeHandler(store, store, store)
-	jobHandler := handler.NewJobHandler(store, store, store)
+	jobHandler := handler.NewJobHandler(store, store, store, appLogger)
+
 	connectHandlerOpts := newRelicConnectHandlerOptions(nrApp)
 
 	mux := http.NewServeMux()
