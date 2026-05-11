@@ -7,9 +7,9 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/apps/api/internal/service"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
-	"github.com/synthify/backend/packages/shared/handlerutil"
-	"github.com/synthify/backend/packages/shared/mappers"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/transport/connect"
+	"github.com/synthify/backend/packages/shared/transport/connect/mappers"
 )
 
 type WorkspaceHandler struct {
@@ -44,7 +44,7 @@ func (h *WorkspaceHandler) GetWorkspace(ctx context.Context, req *connect.Reques
 	}
 	workspace, err := h.service.GetWorkspace(ctx, req.Msg.GetWorkspaceId(), user.ID)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.GetWorkspaceResponse{
 		Workspace: mappers.ToProtoWorkspace(workspace),
@@ -61,7 +61,7 @@ func (h *WorkspaceHandler) CreateWorkspace(ctx context.Context, req *connect.Req
 	}
 	ws, err := h.service.CreateWorkspace(ctx, req.Msg.GetName(), user.ID)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.CreateWorkspaceResponse{
 		Workspace: mappers.ToProtoWorkspace(ws),

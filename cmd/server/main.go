@@ -18,7 +18,7 @@ import (
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/config"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
-	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/packages/shared/job/log"
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository/postgres"
 )
@@ -61,14 +61,16 @@ func main() {
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	}))
 
-	h := middleware.Recover(
-		middleware.Logger(
-			middleware.CORS(cfg.CORSAllowedOrigins,
+	h := middleware.Recover(appLogger,
+	        middleware.Logger(appLogger,
+	                middleware.CORS(cfg.CORSAllowedOrigins,
+
 				// Only allow anonymous read (for tools like log-viewer) in local development.
 				// TODO: Move to service-level auth or restricted VPN access for tools in production.
-				middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local",
-					withJobLogger(jobLogger, mux),
+				middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local", appLogger,
+				       withJobLogger(jobLogger, mux),
 				),
+
 			),
 		),
 	)

@@ -7,9 +7,9 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/apps/api/internal/service"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
-	"github.com/synthify/backend/packages/shared/handlerutil"
-	"github.com/synthify/backend/packages/shared/mappers"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/transport/connect"
+	"github.com/synthify/backend/packages/shared/transport/connect/mappers"
 )
 
 type ItemHandler struct {
@@ -40,7 +40,7 @@ func (h *ItemHandler) GetTreeEntityDetail(ctx context.Context, req *connect.Requ
 
 	item, err := h.items.GetItem(ctx, req.Msg.GetTargetRef().GetId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 
 	detail := &treev1.TreeEntityDetail{
@@ -75,7 +75,7 @@ func (h *ItemHandler) CreateItem(ctx context.Context, req *connect.Request[treev
 	}
 	item, err := h.service.CreateItem(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetLabel(), req.Msg.GetDescription(), req.Msg.GetParentId(), user.ID)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.CreateItemResponse{Item: mappers.ToProtoItem(item)}), nil
 }
@@ -95,7 +95,7 @@ func (h *ItemHandler) ApproveAlias(ctx context.Context, req *connect.Request[tre
 		return nil, err
 	}
 	if err := h.items.ApproveAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.ApproveAliasResponse{
 		CanonicalItemId: req.Msg.GetCanonicalItemId(),
@@ -112,7 +112,7 @@ func (h *ItemHandler) RejectAlias(ctx context.Context, req *connect.Request[tree
 		return nil, err
 	}
 	if err := h.items.RejectAlias(ctx, req.Msg.GetWorkspaceId(), req.Msg.GetCanonicalItemId(), req.Msg.GetAliasItemId()); err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.RejectAliasResponse{
 		CanonicalItemId: req.Msg.GetCanonicalItemId(),

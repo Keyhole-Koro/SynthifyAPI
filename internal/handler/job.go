@@ -10,11 +10,11 @@ import (
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
-	"github.com/synthify/backend/packages/shared/handlerutil"
-	"github.com/synthify/backend/packages/shared/joblifecycle"
-	"github.com/synthify/backend/packages/shared/joblog"
-	"github.com/synthify/backend/packages/shared/mappers"
+	"github.com/synthify/backend/packages/shared/job/lifecycle"
+	"github.com/synthify/backend/packages/shared/job/log"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/transport/connect"
+	"github.com/synthify/backend/packages/shared/transport/connect/mappers"
 )
 
 type JobHandler struct {
@@ -50,7 +50,7 @@ func (h *JobHandler) GetJobExecutionPlan(ctx context.Context, req *connect.Reque
 	}
 	plan, err := h.repo.GetJobExecutionPlan(ctx, req.Msg.GetJobId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.GetJobExecutionPlanResponse{
 		Plan: mappers.ToProtoExecutionPlan(plan),
@@ -63,7 +63,7 @@ func (h *JobHandler) ListJobApprovalRequests(ctx context.Context, req *connect.R
 	}
 	requests, err := h.repo.ListJobApprovalRequests(ctx, req.Msg.GetJobId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	res := connect.NewResponse(&treev1.ListJobApprovalRequestsResponse{})
 	for _, request := range requests {
@@ -83,7 +83,7 @@ func (h *JobHandler) RequestJobApproval(ctx context.Context, req *connect.Reques
 	}
 	approval, err := h.lifecycle.RequestApproval(ctx, req.Msg.GetJobId(), user.ID, req.Msg.GetReason())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
@@ -110,7 +110,7 @@ func (h *JobHandler) ApproveJobApproval(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
 	if err := h.lifecycle.ApproveApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID); err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
@@ -137,7 +137,7 @@ func (h *JobHandler) RejectJobApproval(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("approval_id is required"))
 	}
 	if err := h.lifecycle.RejectApproval(ctx, req.Msg.GetJobId(), req.Msg.GetApprovalId(), user.ID, req.Msg.GetReason()); err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	joblog.FromContext(ctx).Log(ctx, joblog.Event{
 		JobID:       job.JobID,
@@ -157,7 +157,7 @@ func (h *JobHandler) ListJobMutationLogs(ctx context.Context, req *connect.Reque
 	}
 	logs, err := h.repo.ListJobMutationLogs(ctx, req.Msg.GetJobId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	res := connect.NewResponse(&treev1.ListJobMutationLogsResponse{})
 	for _, log := range logs {
@@ -272,7 +272,7 @@ func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*do
 	}
 	job, err := h.repo.GetProcessingJob(ctx, jobID)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	if err := authorizeDocument(ctx, h.workspaces, h.documents, job.DocumentID, ""); err != nil {
 		return nil, err

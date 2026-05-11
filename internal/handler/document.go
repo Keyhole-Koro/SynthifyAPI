@@ -8,9 +8,9 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/apps/api/internal/service"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
-	"github.com/synthify/backend/packages/shared/handlerutil"
-	"github.com/synthify/backend/packages/shared/mappers"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/transport/connect"
+	"github.com/synthify/backend/packages/shared/transport/connect/mappers"
 )
 
 type DocumentHandler struct {
@@ -58,7 +58,7 @@ func (h *DocumentHandler) GetDocument(ctx context.Context, req *connect.Request[
 	}
 	doc, err := h.service.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.GetDocumentResponse{Document: mappers.ToProtoDocument(doc)}), nil
 }
@@ -110,11 +110,11 @@ func (h *DocumentHandler) StartProcessing(ctx context.Context, req *connect.Requ
 	}
 	doc, err := h.documents.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	job, err := h.service.StartProcessing(ctx, doc.WorkspaceID, req.Msg.GetDocumentId(), req.Msg.GetForceReprocess())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.StartProcessingResponse{
 		DocumentId: req.Msg.GetDocumentId(),
@@ -136,11 +136,11 @@ func (h *DocumentHandler) ResumeProcessing(ctx context.Context, req *connect.Req
 	}
 	doc, err := h.service.GetDocument(ctx, req.Msg.GetDocumentId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	job, err := h.service.ResumeProcessing(ctx, doc.WorkspaceID, doc.DocumentID)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.ResumeProcessingResponse{
 		DocumentId: doc.DocumentID,

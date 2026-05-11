@@ -6,9 +6,9 @@ import (
 	"log"
 
 	connect "connectrpc.com/connect"
-	"github.com/synthify/backend/packages/shared/handlerutil"
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/transport/connect"
 )
 
 func currentUser(ctx context.Context) (middleware.AuthUser, error) {
@@ -47,7 +47,7 @@ func authorizeDocument(
 ) error {
 	doc, err := documentRepo.GetDocument(ctx, documentID)
 	if err != nil {
-		return handlerutil.ToConnectError(err)
+		return connectutil.ToError(err)
 	}
 	if expectedWorkspaceID != "" && doc.WorkspaceID != expectedWorkspaceID {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("document does not belong to workspace"))
@@ -64,7 +64,7 @@ func authorizeItem(
 ) error {
 	_, err := itemRepo.GetItem(ctx, itemID)
 	if err != nil {
-		return handlerutil.ToConnectError(err)
+		return connectutil.ToError(err)
 	}
 	return authorizeWorkspace(ctx, workspaceRepo, workspaceID)
 }

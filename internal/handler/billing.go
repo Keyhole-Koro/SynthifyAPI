@@ -8,7 +8,7 @@ import (
 	"github.com/synthify/backend/apps/api/internal/service"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
-	"github.com/synthify/backend/packages/shared/handlerutil"
+	"github.com/synthify/backend/packages/shared/transport/connect"
 )
 
 type BillingHandler struct {
@@ -29,7 +29,7 @@ func (h *BillingHandler) CreateCheckoutSession(ctx context.Context, req *connect
 	}
 	session, err := h.service.CreateCheckoutSession(ctx, req.Msg.GetAccountId(), user.ID, domain.BillingPlanPro)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.CreateCheckoutSessionResponse{
 		CheckoutUrl: session.URL,
@@ -46,7 +46,7 @@ func (h *BillingHandler) CreatePortalSession(ctx context.Context, req *connect.R
 	}
 	session, err := h.service.CreatePortalSession(ctx, req.Msg.GetAccountId(), user.ID)
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.CreatePortalSessionResponse{
 		PortalUrl: session.URL,

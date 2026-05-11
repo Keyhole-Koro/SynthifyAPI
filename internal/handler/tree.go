@@ -7,9 +7,9 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
-	"github.com/synthify/backend/packages/shared/handlerutil"
-	"github.com/synthify/backend/packages/shared/mappers"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/transport/connect"
+	"github.com/synthify/backend/packages/shared/transport/connect/mappers"
 )
 
 type TreeHandler struct {
@@ -39,7 +39,7 @@ func (h *TreeHandler) GetTree(ctx context.Context, req *connect.Request[treev1.G
 	}
 	items, err := h.repo.GetTreeByWorkspace(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 
 	tree := &treev1.Tree{
@@ -73,7 +73,7 @@ func (h *TreeHandler) GetSubtree(ctx context.Context, req *connect.Request[treev
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	if len(items) == 0 {
-		return nil, handlerutil.ToConnectError(domain.ErrNotFound)
+		return nil, connectutil.ToError(domain.ErrNotFound)
 	}
 	if items[0].WorkspaceID != wsID {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("item does not belong to workspace"))
@@ -98,12 +98,12 @@ func (h *TreeHandler) FindPaths(ctx context.Context, req *connect.Request[treev1
 
 	tree, err := h.repo.GetOrCreateTree(ctx, req.Msg.GetWorkspaceId())
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 
 	items, paths, err := h.repo.FindPaths(ctx, tree.TreeID, req.Msg.GetSourceItemId(), req.Msg.GetTargetItemId(), int(req.Msg.GetMaxDepth()), int(req.Msg.GetLimit()))
 	if err != nil {
-		return nil, handlerutil.ToConnectError(err)
+		return nil, connectutil.ToError(err)
 	}
 
 	protoTree := &treev1.Tree{
