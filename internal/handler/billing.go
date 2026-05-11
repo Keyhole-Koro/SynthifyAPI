@@ -6,15 +6,16 @@ import (
 
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/apps/api/internal/service"
+	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	"github.com/synthify/backend/packages/shared/handlerutil"
 )
 
 type BillingHandler struct {
-	service *service.BillingService
+	service service.BillingUsecase
 }
 
-func NewBillingHandler(svc *service.BillingService) *BillingHandler {
+func NewBillingHandler(svc service.BillingUsecase) *BillingHandler {
 	return &BillingHandler{service: svc}
 }
 
@@ -26,12 +27,12 @@ func (h *BillingHandler) CreateCheckoutSession(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	checkoutURL, err := h.service.CreateCheckoutSession(ctx, req.Msg.GetAccountId(), user.ID)
+	session, err := h.service.CreateCheckoutSession(ctx, req.Msg.GetAccountId(), user.ID, domain.BillingPlanPro)
 	if err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.CreateCheckoutSessionResponse{
-		CheckoutUrl: checkoutURL,
+		CheckoutUrl: session.URL,
 	}), nil
 }
 
@@ -43,11 +44,11 @@ func (h *BillingHandler) CreatePortalSession(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, err
 	}
-	portalURL, err := h.service.CreatePortalSession(ctx, req.Msg.GetAccountId(), user.ID)
+	session, err := h.service.CreatePortalSession(ctx, req.Msg.GetAccountId(), user.ID)
 	if err != nil {
 		return nil, handlerutil.ToConnectError(err)
 	}
 	return connect.NewResponse(&treev1.CreatePortalSessionResponse{
-		PortalUrl: portalURL,
+		PortalUrl: session.URL,
 	}), nil
 }
