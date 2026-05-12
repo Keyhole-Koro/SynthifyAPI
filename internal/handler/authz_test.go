@@ -27,7 +27,7 @@ func setupItemFixturesInStore(t *testing.T, store *mock.Store, userID string) st
 	t.Helper()
 	ctx := context.Background()
 	fixture := mock.CreateWorkspaceWithTreeFixture(t, ctx, store, userID)
-	doc, _ := store.CreateDocument(ctx, fixture.Workspace.WorkspaceID, userID, "f.pdf", "application/pdf", 100)
+	doc, _, _ := store.CreateDocument(ctx, fixture.Workspace.WorkspaceID, userID, "f.pdf", "application/pdf", 100)
 	store.CreateProcessingJob(ctx, doc.DocumentID, fixture.Tree.TreeID, treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT)
 	return fixture.Workspace.WorkspaceID
 }
@@ -93,7 +93,7 @@ func TestAuthorizeDocument_WrongWorkspace_ReturnsPermissionDenied(t *testing.T) 
 	store := mock.NewStore()
 	ws1ID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
 	ws2ID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner2").Workspace.WorkspaceID
-	doc, _ := store.CreateDocument(ctx, ws1ID, "owner", "f.pdf", "application/pdf", 100)
+	doc, _, _ := store.CreateDocument(ctx, ws1ID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
 	err := authorizeDocument(authedCtx, store, store, doc.DocumentID, ws2ID)
@@ -104,7 +104,7 @@ func TestAuthorizeDocument_NotMember_ReturnsPermissionDenied(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
 	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
-	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
+	doc, _, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "stranger", Email: "s@example.com"})
 
 	err := authorizeDocument(authedCtx, store, store, doc.DocumentID, "")
@@ -115,7 +115,7 @@ func TestAuthorizeDocument_Member_ReturnsNil(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
 	wsID := mock.CreateUserWorkspaceFixture(t, ctx, store, "owner").Workspace.WorkspaceID
-	doc, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
+	doc, _, _ := store.CreateDocument(ctx, wsID, "owner", "f.pdf", "application/pdf", 100)
 	authedCtx := middleware.ContextWithUser(ctx, middleware.AuthUser{ID: "owner", Email: "o@example.com"})
 
 	err := authorizeDocument(authedCtx, store, store, doc.DocumentID, "")

@@ -74,7 +74,10 @@ func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Reque
 	if err != nil {
 		return nil, err
 	}
-	doc, uploadURL := h.service.CreateDocument(ctx, req.Msg.GetWorkspaceId(), user.ID, req.Msg.GetFilename(), req.Msg.GetMimeType(), req.Msg.GetFileSize())
+	doc, uploadURL, err := h.service.CreateDocument(ctx, req.Msg.GetWorkspaceId(), user.ID, req.Msg.GetFilename(), req.Msg.GetMimeType(), req.Msg.GetFileSize())
+	if err != nil {
+		return nil, connectutil.ToError(err)
+	}
 	return connect.NewResponse(&treev1.CreateDocumentResponse{
 		Document:          mappers.ToProtoDocument(doc),
 		UploadUrl:         uploadURL,

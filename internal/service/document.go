@@ -19,10 +19,15 @@ type WorkerDispatcher interface {
 	ExecuteApprovedPlan(ctx context.Context, req domain.ExecutePlanRequest) error
 }
 
+type ObjectMetadataFetcher interface {
+	GetObjectMetadata(ctx context.Context, workspaceID, documentID string) (*domain.ObjectMetadata, error)
+}
+
 type DocumentService struct {
 	repo             repository.DocumentRepository
 	tree             repository.TreeRepository
 	sourceURLBuilder repository.DocumentSourceURLBuilder
+	objectMetadata   ObjectMetadataFetcher
 	dispatcher       WorkerDispatcher
 	lifecycle        *joblifecycle.Service
 	notifier         jobstatus.Notifier
@@ -33,6 +38,7 @@ func NewDocumentService(
 	repo repository.DocumentRepository,
 	tree repository.TreeRepository,
 	sourceURLBuilder repository.DocumentSourceURLBuilder,
+	objectMetadata ObjectMetadataFetcher,
 	dispatcher WorkerDispatcher,
 	notifier jobstatus.Notifier,
 	logger applog.Logger,
@@ -44,6 +50,7 @@ func NewDocumentService(
 		repo:             repo,
 		tree:             tree,
 		sourceURLBuilder: sourceURLBuilder,
+		objectMetadata:   objectMetadata,
 		dispatcher:       dispatcher,
 		lifecycle:        joblifecycle.New(repo, notifier, logger),
 		notifier:         notifier,
@@ -63,7 +70,7 @@ func (s *DocumentService) GetDocument(ctx context.Context, documentID string) (*
 	return doc, nil
 }
 
-func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, filename, mimeType string, fileSize int64) (*domain.Document, string) {
+func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, filename, mimeType string, fileSize int64) (*domain.Document, string, error) {
 	return s.repo.CreateDocument(ctx, wsID, uploadedBy, filename, mimeType, fileSize)
 }
 
@@ -85,6 +92,9 @@ func (s *DocumentService) startProcessingJob(ctx context.Context, wsID, document
 		if resumeExisting {
 			return nil, domain.ErrNotFound
 		}
+		return nil, err
+	}
+	if err := s.confirmUploadedObject(ctx, doc); err != nil {
 		return nil, err
 	}
 	if resumeExisting {
@@ -126,6 +136,20 @@ func (s *DocumentService) startProcessingJob(ctx context.Context, wsID, document
 		job = latest
 	}
 	return job, nil
+}
+
+func (s *DocumentService) confirmUploadedObject(ctx context.Context, doc *domain.Document) error {
+	if s.objectMetadata == nil {
+		return s.repo.ConfirmDocumentUpload(ctx, doc.DocumentID, doc.FileSize)
+	}
+	metadata, err := s.objectMetadata.GetObjectMetadata(ctx, doc.WorkspaceID, doc.DocumentID)
+	if err != nil {
+		return err
+	}
+	if metadata == nil {
+		return domain.ErrUploadNotConfirmed
+	}
+	return s.repo.ConfirmDocumentUpload(ctx, doc.DocumentID, metadata.Size)
 }
 
 func (s *DocumentService) buildExecutePlanRequest(job *domain.DocumentProcessingJob, doc *domain.Document, wsID, treeID string) domain.ExecutePlanRequest {

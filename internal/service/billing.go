@@ -11,14 +11,14 @@ import (
 )
 
 type BillingUsecase interface {
-	CreateCheckoutSession(ctx context.Context, accountID, actorUserID string, plan domain.BillingPlan) (*domain.BillingCheckoutSession, error)
+	CreateCheckoutSession(ctx context.Context, accountID, actorUserID string, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error)
 	CreatePortalSession(ctx context.Context, accountID, actorUserID string) (*domain.BillingPortalSession, error)
 	HandleWebhook(ctx context.Context, payload []byte, signature string) error
 }
 
 type BillingProvider interface {
 	EnsureCustomer(ctx context.Context, account *domain.Account) (*domain.BillingCustomerRef, error)
-	CreateCheckoutSession(ctx context.Context, account *domain.Account, plan domain.BillingPlan) (*domain.BillingCheckoutSession, error)
+	CreateCheckoutSession(ctx context.Context, account *domain.Account, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error)
 	CreatePortalSession(ctx context.Context, account *domain.Account) (*domain.BillingPortalSession, error)
 	ParseWebhook(ctx context.Context, payload []byte, signature string) (*domain.ProviderWebhookEvent, error)
 }
@@ -40,7 +40,7 @@ func NewBillingService(accounts repository.AccountRepository, provider BillingPr
 	}
 }
 
-func (s *billingService) CreateCheckoutSession(ctx context.Context, accountID, actorUserID string, plan domain.BillingPlan) (*domain.BillingCheckoutSession, error) {
+func (s *billingService) CreateCheckoutSession(ctx context.Context, accountID, actorUserID string, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error) {
 	if err := plan.Validate(); err != nil {
 		s.logger.Warn(ctx, "billing.checkout_session.invalid_plan", err, map[string]any{
 			"account_id":    accountID,
@@ -48,6 +48,16 @@ func (s *billingService) CreateCheckoutSession(ctx context.Context, accountID, a
 			"plan":          plan,
 		})
 		return nil, err
+	}
+	if currency != "" {
+		if err := currency.Validate(); err != nil {
+			s.logger.Warn(ctx, "billing.checkout_session.invalid_currency", err, map[string]any{
+				"account_id":    accountID,
+				"actor_user_id": actorUserID,
+				"currency":      currency,
+			})
+			return nil, err
+		}
 	}
 	account, err := s.authorizeAccount(ctx, accountID, actorUserID)
 	if err != nil {
@@ -70,16 +80,28 @@ func (s *billingService) CreateCheckoutSession(ctx context.Context, accountID, a
 		})
 		return nil, domain.ErrBillingProviderNotConfigured
 	}
-	session, err := s.provider.CreateCheckoutSession(ctx, account, plan)
+	if err := s.ensureProviderCustomer(ctx, account); err != nil {
+		s.noticeError(ctx, "billing.checkout_session.customer_failed", err, map[string]any{
+			"account_id": accountID,
+		})
+		s.logger.Error(ctx, "billing.checkout_session.customer_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return nil, err
+	}
+	session, err := s.provider.CreateCheckoutSession(ctx, account, plan, currency)
 	if err != nil {
 		s.noticeError(ctx, "billing.checkout_session.provider_failed", err, map[string]any{
 			"account_id": accountID,
 			"plan":       string(plan),
+			"currency":   string(currency),
 		})
 		s.logger.Error(ctx, "billing.checkout_session.provider_failed", err, map[string]any{
 			"account_id":    accountID,
 			"actor_user_id": actorUserID,
 			"plan":          plan,
+			"currency":      currency,
 		})
 		return nil, err
 	}
@@ -87,6 +109,7 @@ func (s *billingService) CreateCheckoutSession(ctx context.Context, accountID, a
 		"account_id":    accountID,
 		"actor_user_id": actorUserID,
 		"plan":          plan,
+		"currency":      currency,
 	})
 	return session, nil
 }
@@ -111,6 +134,16 @@ func (s *billingService) CreatePortalSession(ctx context.Context, accountID, act
 			"operation":     "create_portal_session",
 		})
 		return nil, domain.ErrBillingProviderNotConfigured
+	}
+	if err := s.ensureProviderCustomer(ctx, account); err != nil {
+		s.noticeError(ctx, "billing.portal_session.customer_failed", err, map[string]any{
+			"account_id": accountID,
+		})
+		s.logger.Error(ctx, "billing.portal_session.customer_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return nil, err
 	}
 	session, err := s.provider.CreatePortalSession(ctx, account)
 	if err != nil {
@@ -140,7 +173,7 @@ func (s *billingService) HandleWebhook(ctx context.Context, payload []byte, sign
 		})
 		return domain.ErrBillingProviderNotConfigured
 	}
-	_, err := s.provider.ParseWebhook(ctx, payload, signature)
+	event, err := s.provider.ParseWebhook(ctx, payload, signature)
 	if err != nil {
 		if errors.Is(err, domain.ErrBillingWebhookSignatureInvalid) {
 			s.logger.Warn(ctx, "billing.webhook.invalid_signature", err, map[string]any{
@@ -156,10 +189,87 @@ func (s *billingService) HandleWebhook(ctx context.Context, payload []byte, sign
 		})
 		return err
 	}
+	applied, err := s.recordAndApplyWebhookEvent(ctx, event)
+	if err != nil {
+		s.noticeError(ctx, "billing.webhook.apply_failed", err, map[string]any{
+			"event_id":   event.EventID,
+			"event_type": event.EventType,
+		})
+		s.logger.Error(ctx, "billing.webhook.apply_failed", err, map[string]any{
+			"event_id":                 event.EventID,
+			"event_type":               event.EventType,
+			"account_id":               event.AccountID,
+			"external_customer_id":     event.ExternalCustomerID,
+			"external_subscription_id": event.ExternalSubscriptionID,
+		})
+		return err
+	}
 	s.logger.Info(ctx, "billing.webhook.parsed", map[string]any{
-		"payload_size": len(payload),
+		"payload_size":             len(payload),
+		"event_id":                 event.EventID,
+		"event_type":               event.EventType,
+		"account_id":               event.AccountID,
+		"external_customer_id":     event.ExternalCustomerID,
+		"external_subscription_id": event.ExternalSubscriptionID,
+		"applied":                  applied,
 	})
 	return err
+}
+
+func (s *billingService) ensureProviderCustomer(ctx context.Context, account *domain.Account) error {
+	customer, err := s.provider.EnsureCustomer(ctx, account)
+	if err != nil {
+		return err
+	}
+	if customer == nil || customer.ExternalCustomerID == "" || customer.ExternalCustomerID == account.StripeCustomerID {
+		return nil
+	}
+	if err := s.accounts.SetAccountStripeCustomerID(ctx, account.AccountID, customer.ExternalCustomerID); err != nil {
+		return err
+	}
+	account.StripeCustomerID = customer.ExternalCustomerID
+	return nil
+}
+
+func (s *billingService) recordAndApplyWebhookEvent(ctx context.Context, event *domain.ProviderWebhookEvent) (bool, error) {
+	if event == nil {
+		return false, nil
+	}
+	recorded, err := s.accounts.RecordBillingWebhookEvent(ctx, event)
+	if err != nil {
+		return false, err
+	}
+	if !recorded {
+		s.logger.Info(ctx, "billing.webhook.duplicate", map[string]any{
+			"event_id":   event.EventID,
+			"event_type": event.EventType,
+		})
+		return false, nil
+	}
+	if event.Plan == "" {
+		if err := s.accounts.MarkBillingWebhookEventProcessed(ctx, event.Provider, event.EventID, "ignored", ""); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err := event.Plan.Validate(); err != nil {
+		_ = s.accounts.MarkBillingWebhookEventProcessed(ctx, event.Provider, event.EventID, "failed", err.Error())
+		return false, err
+	}
+	if event.Currency != "" {
+		if err := event.Currency.Validate(); err != nil {
+			_ = s.accounts.MarkBillingWebhookEventProcessed(ctx, event.Provider, event.EventID, "failed", err.Error())
+			return false, err
+		}
+	}
+	if err := s.accounts.ApplyBillingEvent(ctx, event); err != nil {
+		_ = s.accounts.MarkBillingWebhookEventProcessed(ctx, event.Provider, event.EventID, "failed", err.Error())
+		return false, err
+	}
+	if err := s.accounts.MarkBillingWebhookEventProcessed(ctx, event.Provider, event.EventID, "processed", ""); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func (s *billingService) authorizeAccount(ctx context.Context, accountID, userID string) (*domain.Account, error) {
@@ -197,6 +307,8 @@ func shouldNoticeBillingError(err error) bool {
 	case err == nil:
 		return false
 	case errors.Is(err, domain.ErrBillingPlanInvalid):
+		return false
+	case errors.Is(err, domain.ErrBillingCurrencyUnsupported):
 		return false
 	case errors.Is(err, domain.ErrBillingWebhookSignatureInvalid):
 		return false

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,12 +12,15 @@ import (
 	"github.com/newrelic/go-agent/v3/integrations/nrconnect"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/synthify/backend/apps/api/internal/handler"
+	objectstorage "github.com/synthify/backend/apps/api/internal/infrastructure/storage"
+	stripebilling "github.com/synthify/backend/apps/api/internal/infrastructure/stripe"
 	"github.com/synthify/backend/apps/api/internal/observability"
 	"github.com/synthify/backend/apps/api/internal/service"
 	"github.com/synthify/backend/apps/worker/pkg/worker"
 	"github.com/synthify/backend/packages/shared/app"
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/config"
+	"github.com/synthify/backend/packages/shared/domain"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
 	"github.com/synthify/backend/packages/shared/job/log"
 	"github.com/synthify/backend/packages/shared/middleware"
@@ -40,10 +44,14 @@ func main() {
 		log.Fatalf("failed to initialize new relic: %v", err)
 	}
 	dispatcher := initDispatcher(cfg)
+	billingProvider, err := initBillingProvider(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize billing provider: %v", err)
+	}
 
 	workspaceService := service.NewWorkspaceService(store, store, appLogger)
-	billingService := service.NewBillingService(store, nil, appLogger)
-	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), dispatcher, notifier, appLogger)
+	billingService := service.NewBillingService(store, billingProvider, appLogger)
+	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), objectstorage.NewObjectMetadataFetcher(cfg.InternalGCSUploadBase), dispatcher, notifier, appLogger)
 	itemService := service.NewItemService(store, store, appLogger)
 	treeHandler := handler.NewTreeHandler(store, store, store)
 	jobHandler := handler.NewJobHandler(store, store, store, appLogger)
@@ -51,6 +59,7 @@ func main() {
 	connectHandlerOpts := newRelicConnectHandlerOptions(nrApp)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/stripe/webhook", handler.NewBillingWebhookHTTPHandler(billingService, appLogger))
 	mux.Handle(treev1connect.NewBillingServiceHandler(handler.NewBillingHandler(billingService), connectHandlerOpts...))
 	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService, store), connectHandlerOpts...))
 	mux.Handle(treev1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.NewDocumentUploadURLBuilder(cfg.GCSUploadURLBase)), connectHandlerOpts...))
@@ -86,6 +95,24 @@ func initDispatcher(cfg config.API) service.WorkerDispatcher {
 		return worker.NewHTTPDispatcher(cfg.WorkerBaseURL)
 	}
 	return nil
+}
+
+func initBillingProvider(cfg config.API) (service.BillingProvider, error) {
+	provider, err := stripebilling.NewProvider(stripebilling.Config{
+		SecretKey:       cfg.StripeSecretKey,
+		WebhookSecret:   cfg.StripeWebhookSecret,
+		ProPriceID:      cfg.StripeProPriceID,
+		ProPriceIDJPY:   cfg.StripeProPriceIDJPY,
+		ProPriceIDUSD:   cfg.StripeProPriceIDUSD,
+		DefaultCurrency: cfg.StripeDefaultCurrency,
+		SuccessURL:      cfg.BillingSuccessURL,
+		CancelURL:       cfg.BillingCancelURL,
+		PortalReturnURL: cfg.BillingPortalReturnURL,
+	})
+	if errors.Is(err, domain.ErrBillingProviderNotConfigured) {
+		return nil, nil
+	}
+	return provider, err
 }
 
 func withJobLogger(l joblog.Logger, next http.Handler) http.Handler {
