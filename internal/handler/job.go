@@ -256,15 +256,13 @@ func (h *JobHandler) ListRelatedJobLogs(ctx context.Context, req *connect.Reques
 
 func (h *JobHandler) ListAllJobs(ctx context.Context, _ *connect.Request[treev1.ListAllJobsRequest]) (*connect.Response[treev1.ListAllJobsResponse], error) {
 	// 全 workspace 横断のため admin 権限を要求。
-	// log-viewer など anonymous read が許可されたツールは middleware で AnonymousReadAllowed が立つ
-	// (isAnonymousPathAllowed に ListAllJobs が含まれる) ので、そのケースのみバイパスする。
-	if !middleware.AnonymousReadAllowed(ctx) {
-		if _, err := currentUser(ctx); err != nil {
-			return nil, err
-		}
-		if !middleware.IsAdmin(ctx) {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("admin role required"))
-		}
+	// log-viewer など読み取り専用ツールは API を経由せず Postgres を直接参照する設計に
+	// 切り替えたため、anonymous バイパスは存在しない。
+	if _, err := currentUser(ctx); err != nil {
+		return nil, err
+	}
+	if !middleware.IsAdmin(ctx) {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("admin role required"))
 	}
 	jobs, err := h.repo.ListAllJobs(ctx)
 	if err != nil {
@@ -279,10 +277,8 @@ func (h *JobHandler) ListAllJobs(ctx context.Context, _ *connect.Request[treev1.
 
 func (h *JobHandler) authorizeAndLoadJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, error) {
 	// 認証を先にチェック。job_id 空 / job not found を未認証ユーザーに返さないため。
-	if !middleware.AnonymousReadAllowed(ctx) {
-		if _, err := currentUser(ctx); err != nil {
-			return nil, err
-		}
+	if _, err := currentUser(ctx); err != nil {
+		return nil, err
 	}
 	if jobID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))

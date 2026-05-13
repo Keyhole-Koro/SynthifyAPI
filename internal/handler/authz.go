@@ -25,9 +25,6 @@ func currentUser(ctx context.Context) (middleware.AuthUser, error) {
 }
 
 func authorizeWorkspace(ctx context.Context, repo repository.WorkspaceRepository, workspaceID string) error {
-	if middleware.AnonymousReadAllowed(ctx) {
-		return nil
-	}
 	user, err := currentUser(ctx)
 	if err != nil {
 		return err
@@ -46,11 +43,9 @@ func authorizeDocument(
 	expectedWorkspaceID string,
 ) error {
 	// 認証を先にチェック。未認証ユーザーに「document が存在するか」を NotFound 経由で
-	// 漏らさないため。anonymous read が許可されている場合はスキップ。
-	if !middleware.AnonymousReadAllowed(ctx) {
-		if _, err := currentUser(ctx); err != nil {
-			return err
-		}
+	// 漏らさないため。
+	if _, err := currentUser(ctx); err != nil {
+		return err
 	}
 	doc, err := documentRepo.GetDocument(ctx, documentID)
 	if err != nil {
@@ -69,10 +64,8 @@ func authorizeItem(
 	itemID string,
 	workspaceID string,
 ) error {
-	if !middleware.AnonymousReadAllowed(ctx) {
-		if _, err := currentUser(ctx); err != nil {
-			return err
-		}
+	if _, err := currentUser(ctx); err != nil {
+		return err
 	}
 	_, err := itemRepo.GetItem(ctx, itemID)
 	if err != nil {

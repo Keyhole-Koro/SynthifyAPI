@@ -74,9 +74,9 @@ func main() {
 	h := middleware.Recover(appLogger,
 		middleware.Logger(appLogger,
 			middleware.CORS(cfg.CORSAllowedOrigins,
-				// Only allow anonymous read (for tools like log-viewer) in local development.
-				// TODO: Move to service-level auth or restricted VPN access for tools in production.
-				middleware.WithAuth(cfg.FirebaseProjectID, cfg.Env == "local", appLogger,
+				// log-viewer など read-only ツールは API を経由せず Postgres を直接参照する設計
+				// (docs/improvements/log-viewer-direct-db.md)。anonymous バイパスは廃止。
+				middleware.WithAuth(cfg.FirebaseProjectID, appLogger,
 					withJobLogger(jobLogger, mux),
 				),
 			),
