@@ -2,7 +2,6 @@ package handler
 
 // Sweep tests: every non-public Connect RPC rejects an unauthenticated request
 // with CodeUnauthenticated. This is the "everyone forgets a guard" regression net.
-// See docs/improvements/handler-auth-test-coverage.md.
 
 import (
 	"context"
