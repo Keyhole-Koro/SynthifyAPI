@@ -11,9 +11,17 @@ import (
 )
 
 type BillingUsecase interface {
+	GetBillingAccount(ctx context.Context, accountID, actorUserID string) (*domain.Account, error)
 	CreateCheckoutSession(ctx context.Context, accountID, actorUserID string, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error)
 	CreatePortalSession(ctx context.Context, accountID, actorUserID string) (*domain.BillingPortalSession, error)
 	HandleWebhook(ctx context.Context, payload []byte, signature string) error
+
+	// Phase 1-3 usage-based billing (stub — not wired to Stripe / worker yet)
+	GetUsage(ctx context.Context, accountID, actorUserID string, periodStart, periodEnd string) (*domain.UsageReport, error)
+	RecordUsage(ctx context.Context, ev *domain.UsageEvent) (*domain.UsageRecordResult, error)
+	UpdateBudget(ctx context.Context, accountID, actorUserID string, budgetLimit string) (string, error)
+	ListInvoices(ctx context.Context, accountID, actorUserID string, limit int) (*domain.InvoiceList, error)
+	ListPaymentMethods(ctx context.Context, accountID, actorUserID string) ([]*domain.PaymentMethod, error)
 }
 
 type BillingProvider interface {
@@ -38,6 +46,18 @@ func NewBillingService(accounts repository.AccountRepository, provider BillingPr
 		provider: provider,
 		logger:   logger,
 	}
+}
+
+func (s *billingService) GetBillingAccount(ctx context.Context, accountID, actorUserID string) (*domain.Account, error) {
+	account, err := s.authorizeAccount(ctx, accountID, actorUserID)
+	if err != nil {
+		s.logAuthorizeError(ctx, "billing.get_account.authorize_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return nil, err
+	}
+	return account, nil
 }
 
 func (s *billingService) CreateCheckoutSession(ctx context.Context, accountID, actorUserID string, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error) {
@@ -317,4 +337,104 @@ func shouldNoticeBillingError(err error) bool {
 	default:
 		return true
 	}
+}
+
+// =========================================================
+// Usage-Based Billing — stubs
+// 実装は別 PR で対応 (Phase 1-3 docs/improvements/usage-based-billing.md)
+// =========================================================
+
+func (s *billingService) GetUsage(ctx context.Context, accountID, actorUserID string, periodStart, periodEnd string) (*domain.UsageReport, error) {
+	if _, err := s.authorizeAccount(ctx, accountID, actorUserID); err != nil {
+		s.logAuthorizeError(ctx, "billing.get_usage.authorize_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return nil, err
+	}
+	// TODO: query usage_events + account_usage_daily
+	s.logger.Info(ctx, "billing.get_usage.stub", map[string]any{
+		"account_id":    accountID,
+		"actor_user_id": actorUserID,
+		"period_start":  periodStart,
+		"period_end":    periodEnd,
+	})
+	return &domain.UsageReport{
+		AccountID:   accountID,
+		PeriodStart: periodStart,
+		PeriodEnd:   periodEnd,
+		TotalCost:   "0.00",
+		Currency:    "usd",
+	}, nil
+}
+
+func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent) (*domain.UsageRecordResult, error) {
+	if ev == nil || ev.AccountID == "" || ev.Model == "" {
+		return nil, domain.ErrBillingUsageEventInvalid
+	}
+	// 認可は handler 側で middleware.IsServiceCall を要求済み (X-Synthify-Service-Token).
+	// TODO: pricing lookup, insert usage_events, update accounts.current_period_usage_minor, budget check
+	s.logger.Info(ctx, "billing.record_usage.stub", map[string]any{
+		"account_id":    ev.AccountID,
+		"workspace_id":  ev.WorkspaceID,
+		"job_id":        ev.JobID,
+		"model":         ev.Model,
+		"input_tokens":  ev.InputTokens,
+		"output_tokens": ev.OutputTokens,
+	})
+	return &domain.UsageRecordResult{
+		EventID:        ev.EventID,
+		Cost:           "0.00",
+		BudgetExceeded: false,
+	}, nil
+}
+
+func (s *billingService) UpdateBudget(ctx context.Context, accountID, actorUserID string, budgetLimit string) (string, error) {
+	if _, err := s.authorizeAccount(ctx, accountID, actorUserID); err != nil {
+		s.logAuthorizeError(ctx, "billing.update_budget.authorize_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return "", err
+	}
+	// TODO: parse budgetLimit decimal -> minor, persist to accounts.budget_limit_minor
+	s.logger.Info(ctx, "billing.update_budget.stub", map[string]any{
+		"account_id":    accountID,
+		"actor_user_id": actorUserID,
+		"budget_limit":  budgetLimit,
+	})
+	return budgetLimit, nil
+}
+
+func (s *billingService) ListInvoices(ctx context.Context, accountID, actorUserID string, limit int) (*domain.InvoiceList, error) {
+	if _, err := s.authorizeAccount(ctx, accountID, actorUserID); err != nil {
+		s.logAuthorizeError(ctx, "billing.list_invoices.authorize_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return nil, err
+	}
+	// TODO: read from invoices cache table (synced from Stripe webhook)
+	s.logger.Info(ctx, "billing.list_invoices.stub", map[string]any{
+		"account_id":    accountID,
+		"actor_user_id": actorUserID,
+		"limit":         limit,
+	})
+	return &domain.InvoiceList{Invoices: nil, UpcomingAmount: "0.00", UpcomingPeriodEnd: ""}, nil
+}
+
+func (s *billingService) ListPaymentMethods(ctx context.Context, accountID, actorUserID string) ([]*domain.PaymentMethod, error) {
+	if _, err := s.authorizeAccount(ctx, accountID, actorUserID); err != nil {
+		s.logAuthorizeError(ctx, "billing.list_payment_methods.authorize_failed", err, map[string]any{
+			"account_id":    accountID,
+			"actor_user_id": actorUserID,
+		})
+		return nil, err
+	}
+	// TODO: read from payment_methods cache table
+	s.logger.Info(ctx, "billing.list_payment_methods.stub", map[string]any{
+		"account_id":    accountID,
+		"actor_user_id": actorUserID,
+	})
+	return nil, nil
 }

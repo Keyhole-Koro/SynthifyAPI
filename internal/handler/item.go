@@ -57,11 +57,6 @@ func (h *ItemHandler) GetTreeEntityDetail(ctx context.Context, req *connect.Requ
 	return connect.NewResponse(&treev1.GetTreeEntityDetailResponse{Detail: detail}), nil
 }
 
-func (h *ItemHandler) RecordItemView(_ context.Context, _ *connect.Request[treev1.RecordItemViewRequest]) (*connect.Response[treev1.RecordItemViewResponse], error) {
-	// Presence is managed in Firestore, so the backend does not write to Postgres here.
-	return connect.NewResponse(&treev1.RecordItemViewResponse{}), nil
-}
-
 func (h *ItemHandler) CreateItem(ctx context.Context, req *connect.Request[treev1.CreateItemRequest]) (*connect.Response[treev1.CreateItemResponse], error) {
 	if req.Msg.GetWorkspaceId() == "" || req.Msg.GetLabel() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workspace_id and label are required"))
@@ -78,13 +73,6 @@ func (h *ItemHandler) CreateItem(ctx context.Context, req *connect.Request[treev
 		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.CreateItemResponse{Item: mappers.ToProtoItem(item)}), nil
-}
-
-func (h *ItemHandler) GetUserItemActivity(_ context.Context, _ *connect.Request[treev1.GetUserItemActivityRequest]) (*connect.Response[treev1.GetUserItemActivityResponse], error) {
-	// Item activity has already been moved to Firestore presence.
-	return connect.NewResponse(&treev1.GetUserItemActivityResponse{
-		Activity: &treev1.UserItemActivity{},
-	}), nil
 }
 
 func (h *ItemHandler) ApproveAlias(ctx context.Context, req *connect.Request[treev1.ApproveAliasRequest]) (*connect.Response[treev1.ApproveAliasResponse], error) {

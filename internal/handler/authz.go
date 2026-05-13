@@ -45,6 +45,13 @@ func authorizeDocument(
 	documentID string,
 	expectedWorkspaceID string,
 ) error {
+	// 認証を先にチェック。未認証ユーザーに「document が存在するか」を NotFound 経由で
+	// 漏らさないため。anonymous read が許可されている場合はスキップ。
+	if !middleware.AnonymousReadAllowed(ctx) {
+		if _, err := currentUser(ctx); err != nil {
+			return err
+		}
+	}
 	doc, err := documentRepo.GetDocument(ctx, documentID)
 	if err != nil {
 		return connectutil.ToError(err)
@@ -62,6 +69,11 @@ func authorizeItem(
 	itemID string,
 	workspaceID string,
 ) error {
+	if !middleware.AnonymousReadAllowed(ctx) {
+		if _, err := currentUser(ctx); err != nil {
+			return err
+		}
+	}
 	_, err := itemRepo.GetItem(ctx, itemID)
 	if err != nil {
 		return connectutil.ToError(err)

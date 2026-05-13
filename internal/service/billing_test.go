@@ -29,14 +29,16 @@ func TestCreateCheckoutSession_InvalidPlan_WarnsAndReturnsError(t *testing.T) {
 	assert.Equal(t, "billing.checkout_session.invalid_plan", logger.entries[0].event)
 }
 
-func TestCreateCheckoutSession_AccountNotAccessible_WarnsAndReturnsNotFound(t *testing.T) {
+func TestCreateCheckoutSession_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
 	ctx := context.Background()
 	store := mock.NewStore()
 	logger := &billingTestLogger{}
 	provider := &billingTestProvider{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
 	svc := NewBillingService(store, provider, logger)
 
-	session, err := svc.CreateCheckoutSession(ctx, "owner", "stranger", domain.BillingPlanPro, "")
+	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "stranger", domain.BillingPlanPro, "")
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
@@ -110,6 +112,51 @@ func TestCreateCheckoutSession_Success_LogsInfo(t *testing.T) {
 	assert.Equal(t, "billing.checkout_session.created", logger.entries[0].event)
 }
 
+func TestCreatePortalSession_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	provider := &billingTestProvider{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, provider, logger)
+
+	session, err := svc.CreatePortalSession(ctx, account.AccountID, "stranger")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	assert.Nil(t, session)
+	assert.Zero(t, provider.createPortalCalls)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "warn", logger.entries[0].level)
+	assert.Equal(t, "billing.portal_session.authorize_failed", logger.entries[0].event)
+}
+
+func TestCreatePortalSession_Success_UsesAuthorizedAccount(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	provider := &billingTestProvider{
+		createPortalFn: func(ctx context.Context, gotAccount *domain.Account) (*domain.BillingPortalSession, error) {
+			assert.Equal(t, account.AccountID, gotAccount.AccountID)
+			return &domain.BillingPortalSession{URL: "https://billing.example/portal"}, nil
+		},
+	}
+	svc := NewBillingService(store, provider, logger)
+
+	session, err := svc.CreatePortalSession(ctx, account.AccountID, "owner")
+
+	require.NoError(t, err)
+	require.NotNil(t, session)
+	assert.Equal(t, "https://billing.example/portal", session.URL)
+	assert.Equal(t, 1, provider.createPortalCalls)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "info", logger.entries[0].level)
+	assert.Equal(t, "billing.portal_session.created", logger.entries[0].event)
+}
+
 func TestHandleWebhook_InvalidSignature_Warns(t *testing.T) {
 	ctx := context.Background()
 	logger := &billingTestLogger{}
@@ -149,8 +196,205 @@ func TestHandleWebhook_Success_LogsInfo(t *testing.T) {
 	assert.Equal(t, "billing.webhook.parsed", logger.entries[0].event)
 }
 
+// =========================================================
+// Usage-Based Billing (stub) tests
+// =========================================================
+
+func TestGetUsage_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	report, err := svc.GetUsage(ctx, account.AccountID, "stranger", "", "")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	assert.Nil(t, report)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "warn", logger.entries[0].level)
+	assert.Equal(t, "billing.get_usage.authorize_failed", logger.entries[0].event)
+}
+
+func TestGetUsage_Success_ReturnsStubReport(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	report, err := svc.GetUsage(ctx, account.AccountID, "owner", "2026-05-01T00:00:00Z", "2026-05-31T23:59:59Z")
+
+	require.NoError(t, err)
+	require.NotNil(t, report)
+	assert.Equal(t, account.AccountID, report.AccountID)
+	assert.Equal(t, "2026-05-01T00:00:00Z", report.PeriodStart)
+	assert.Equal(t, "2026-05-31T23:59:59Z", report.PeriodEnd)
+	assert.Equal(t, "0.00", report.TotalCost)
+	assert.Equal(t, "usd", report.Currency)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "info", logger.entries[0].level)
+	assert.Equal(t, "billing.get_usage.stub", logger.entries[0].event)
+}
+
+func TestRecordUsage_MissingFields_ReturnsUsageEventInvalid(t *testing.T) {
+	ctx := context.Background()
+	logger := &billingTestLogger{}
+	svc := NewBillingService(mock.NewStore(), &billingTestProvider{}, logger)
+
+	cases := []*domain.UsageEvent{
+		nil,
+		{Model: "gemini"},
+		{AccountID: "acc-1"},
+	}
+	for _, ev := range cases {
+		result, err := svc.RecordUsage(ctx, ev)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrBillingUsageEventInvalid)
+		assert.Nil(t, result)
+	}
+	assert.Empty(t, logger.entries)
+}
+
+func TestRecordUsage_Success_ReturnsStubResult(t *testing.T) {
+	ctx := context.Background()
+	logger := &billingTestLogger{}
+	svc := NewBillingService(mock.NewStore(), &billingTestProvider{}, logger)
+
+	ev := &domain.UsageEvent{
+		EventID:      "evt-1",
+		AccountID:    "acc-1",
+		WorkspaceID:  "ws-1",
+		JobID:        "job-1",
+		Model:        "gemini-3-flash-preview",
+		InputTokens:  100,
+		OutputTokens: 50,
+	}
+	result, err := svc.RecordUsage(ctx, ev)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "evt-1", result.EventID)
+	assert.Equal(t, "0.00", result.Cost)
+	assert.False(t, result.BudgetExceeded)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "info", logger.entries[0].level)
+	assert.Equal(t, "billing.record_usage.stub", logger.entries[0].event)
+}
+
+func TestUpdateBudget_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	limit, err := svc.UpdateBudget(ctx, account.AccountID, "stranger", "50.00")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	assert.Empty(t, limit)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "warn", logger.entries[0].level)
+	assert.Equal(t, "billing.update_budget.authorize_failed", logger.entries[0].event)
+}
+
+func TestUpdateBudget_Success_EchoesLimit(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	limit, err := svc.UpdateBudget(ctx, account.AccountID, "owner", "50.00")
+
+	require.NoError(t, err)
+	assert.Equal(t, "50.00", limit)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "info", logger.entries[0].level)
+	assert.Equal(t, "billing.update_budget.stub", logger.entries[0].event)
+}
+
+func TestListInvoices_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	list, err := svc.ListInvoices(ctx, account.AccountID, "stranger", 10)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	assert.Nil(t, list)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "warn", logger.entries[0].level)
+	assert.Equal(t, "billing.list_invoices.authorize_failed", logger.entries[0].event)
+}
+
+func TestListInvoices_Success_ReturnsEmptyList(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	list, err := svc.ListInvoices(ctx, account.AccountID, "owner", 10)
+
+	require.NoError(t, err)
+	require.NotNil(t, list)
+	assert.Empty(t, list.Invoices)
+	assert.Equal(t, "0.00", list.UpcomingAmount)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "info", logger.entries[0].level)
+	assert.Equal(t, "billing.list_invoices.stub", logger.entries[0].event)
+}
+
+func TestListPaymentMethods_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	methods, err := svc.ListPaymentMethods(ctx, account.AccountID, "stranger")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	assert.Nil(t, methods)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "warn", logger.entries[0].level)
+	assert.Equal(t, "billing.list_payment_methods.authorize_failed", logger.entries[0].event)
+}
+
+func TestListPaymentMethods_Success_ReturnsEmptyList(t *testing.T) {
+	ctx := context.Background()
+	store := mock.NewStore()
+	logger := &billingTestLogger{}
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	svc := NewBillingService(store, &billingTestProvider{}, logger)
+
+	methods, err := svc.ListPaymentMethods(ctx, account.AccountID, "owner")
+
+	require.NoError(t, err)
+	assert.Empty(t, methods)
+	require.Len(t, logger.entries, 1)
+	assert.Equal(t, "info", logger.entries[0].level)
+	assert.Equal(t, "billing.list_payment_methods.stub", logger.entries[0].event)
+}
+
 type billingTestProvider struct {
 	createCheckoutCalls int
+	createPortalCalls   int
 	parseWebhookCalls   int
 
 	ensureCustomerFn func(ctx context.Context, account *domain.Account) (*domain.BillingCustomerRef, error)
@@ -175,6 +419,7 @@ func (p *billingTestProvider) CreateCheckoutSession(ctx context.Context, account
 }
 
 func (p *billingTestProvider) CreatePortalSession(ctx context.Context, account *domain.Account) (*domain.BillingPortalSession, error) {
+	p.createPortalCalls++
 	if p.createPortalFn == nil {
 		return &domain.BillingPortalSession{}, nil
 	}
