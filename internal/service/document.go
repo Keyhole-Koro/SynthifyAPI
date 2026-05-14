@@ -75,6 +75,17 @@ func (s *DocumentService) CreateDocument(ctx context.Context, wsID, uploadedBy, 
 }
 
 func (s *DocumentService) StartProcessing(ctx context.Context, wsID, documentID string, forceReprocess bool) (*domain.DocumentProcessingJob, error) {
+	if !forceReprocess {
+		if latest, err := s.repo.GetLatestProcessingJob(ctx, documentID); err == nil {
+			switch latest.Status {
+			case treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_SUCCEEDED,
+				treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_RUNNING,
+				treev1.JobLifecycleState_JOB_LIFECYCLE_STATE_QUEUED:
+				return latest, nil
+			}
+		}
+	}
+
 	jobType := treev1.JobType_JOB_TYPE_PROCESS_DOCUMENT
 	if forceReprocess {
 		jobType = treev1.JobType_JOB_TYPE_REPROCESS_DOCUMENT
@@ -110,7 +121,7 @@ func (s *DocumentService) startProcessingJob(ctx context.Context, wsID, document
 	if err != nil {
 		return nil, err
 	}
-	job := s.repo.CreateProcessingJob(ctx, documentID, tree.TreeID, jobType)
+	job := s.repo.CreateProcessingJob(ctx, documentID, wsID, jobType)
 	if job == nil {
 		return nil, domain.ErrNotFound
 	}
