@@ -50,7 +50,7 @@ func main() {
 	}
 
 	workspaceService := service.NewWorkspaceService(store, store, appLogger)
-	billingService := service.NewBillingService(store, billingProvider, appLogger)
+	billingService := service.NewBillingService(store, store, billingProvider, appLogger)
 	documentService := service.NewDocumentService(store, store, app.NewDocumentSourceURLBuilder(cfg.InternalGCSUploadBase), objectstorage.NewObjectMetadataFetcher(cfg.InternalGCSUploadBase), dispatcher, notifier, appLogger)
 	itemService := service.NewItemService(store, store, appLogger)
 	treeHandler := handler.NewTreeHandler(store, store, store)
@@ -75,7 +75,7 @@ func main() {
 		middleware.Logger(appLogger,
 			middleware.CORS(cfg.CORSAllowedOrigins,
 				// log-viewer など read-only ツールは API を経由せず Postgres を直接参照する設計
-				middleware.WithAuth(cfg.FirebaseProjectID, appLogger,
+				middleware.WithAuth(ctx, cfg.FirebaseProjectID, appLogger,
 					withJobLogger(jobLogger, mux),
 				),
 			),

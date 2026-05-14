@@ -1,7 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	connect "connectrpc.com/connect"
@@ -209,6 +213,39 @@ func TestBillingHandler_RecordUsage_AuthenticatedUserAlone_StillDenied(t *testin
 }
 
 func TestBillingHandler_RecordUsage_ServiceToken_CallsService(t *testing.T) {
+	// 目的: worker が送った usage payload が欠落なく service 層へ渡ることを確認する。
+	// 特に event_id は DB の冪等性キーなので、handler 境界で落とさないことを守る。
+	svc := &billingHandlerTestUsecase{}
+	h := NewBillingHandler(svc)
+	ctx := middleware.ContextWithServiceCall(context.Background())
+
+	resp, err := h.RecordUsage(ctx, connect.NewRequest(&treev1.RecordUsageRequest{
+		EventId:      "evt-usage-1",
+		AccountId:    "owner",
+		WorkspaceId:  "ws-1",
+		JobId:        "job-1",
+		Model:        "gemini-2.5-pro",
+		InputTokens:  123,
+		OutputTokens: 45,
+	}))
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, 1, svc.recordUsageCalls)
+	require.NotNil(t, svc.gotUsageEvent)
+	assert.Equal(t, "evt-usage-1", svc.gotUsageEvent.EventID)
+	assert.Equal(t, "owner", svc.gotUsageEvent.AccountID)
+	assert.Equal(t, "ws-1", svc.gotUsageEvent.WorkspaceID)
+	assert.Equal(t, "job-1", svc.gotUsageEvent.JobID)
+	assert.Equal(t, "gemini-2.5-pro", svc.gotUsageEvent.Model)
+	assert.Equal(t, int64(123), svc.gotUsageEvent.InputTokens)
+	assert.Equal(t, int64(45), svc.gotUsageEvent.OutputTokens)
+	assert.Equal(t, "evt-usage-1", resp.Msg.GetEventId())
+}
+
+func TestBillingHandler_RecordUsage_ServiceTokenMissingEventID_ReturnsInvalidArgument(t *testing.T) {
+	// 目的: service token が正しくても、冪等性キー event_id がない usage 記録は拒否することを確認する。
+	// これにより DB 永続化直前で失敗するのではなく、handler 境界で入力不備として扱える。
 	svc := &billingHandlerTestUsecase{}
 	h := NewBillingHandler(svc)
 	ctx := middleware.ContextWithServiceCall(context.Background())
@@ -218,9 +255,54 @@ func TestBillingHandler_RecordUsage_ServiceToken_CallsService(t *testing.T) {
 		Model:     "gemini-2.5-pro",
 	}))
 
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	assert.Equal(t, 1, svc.recordUsageCalls)
+	assert.Nil(t, resp)
+	assertConnectCode(t, err, connect.CodeInvalidArgument)
+	assert.Zero(t, svc.recordUsageCalls)
+}
+
+func TestBillingWebhookHTTPHandler_MethodNotAllowed(t *testing.T) {
+	// 目的: Stripe webhook endpoint が POST 以外を拒否し、service を呼ばないことを確認する。
+	svc := &billingHandlerTestUsecase{}
+	h := NewBillingWebhookHTTPHandler(svc, nil)
+	req := httptest.NewRequest(http.MethodGet, "/stripe/webhook", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.Equal(t, http.MethodPost, rec.Header().Get("Allow"))
+	assert.Zero(t, svc.webhookCalls)
+}
+
+func TestBillingWebhookHTTPHandler_InvalidSignature_ReturnsBadRequest(t *testing.T) {
+	// 目的: provider が署名エラーを返したとき、HTTP として 400 を返すことを確認する。
+	// Stripe 側の再送/監視で扱いやすいように、内部エラーと区別する。
+	svc := &billingHandlerTestUsecase{webhookErr: domain.ErrBillingWebhookSignatureInvalid}
+	h := NewBillingWebhookHTTPHandler(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/stripe/webhook", bytes.NewBufferString(`{"id":"evt_1"}`))
+	req.Header.Set("Stripe-Signature", "sig-test")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, 1, svc.webhookCalls)
+	assert.Equal(t, `{"id":"evt_1"}`, string(svc.gotWebhookPayload))
+	assert.Equal(t, "sig-test", svc.gotWebhookSignature)
+}
+
+func TestBillingWebhookHTTPHandler_ServiceError_ReturnsInternalServerError(t *testing.T) {
+	// 目的: 署名エラー以外の webhook 処理失敗は 500 として返すことを確認する。
+	// 課金状態の適用失敗を Stripe 側の retry 対象にするための境界テスト。
+	svc := &billingHandlerTestUsecase{webhookErr: errors.New("apply failed")}
+	h := NewBillingWebhookHTTPHandler(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/stripe/webhook", bytes.NewBufferString(`{"id":"evt_1"}`))
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Equal(t, 1, svc.webhookCalls)
 }
 
 type billingHandlerTestUsecase struct {
@@ -240,9 +322,14 @@ type billingHandlerTestUsecase struct {
 
 	getUsageCalls           int
 	recordUsageCalls        int
+	gotUsageEvent           *domain.UsageEvent
 	updateBudgetCalls       int
 	listInvoicesCalls       int
 	listPaymentMethodsCalls int
+	webhookCalls            int
+	webhookErr              error
+	gotWebhookPayload       []byte
+	gotWebhookSignature     string
 }
 
 func (u *billingHandlerTestUsecase) GetBillingAccount(ctx context.Context, accountID, actorUserID string) (*domain.Account, error) {
@@ -266,7 +353,10 @@ func (u *billingHandlerTestUsecase) CreatePortalSession(ctx context.Context, acc
 }
 
 func (u *billingHandlerTestUsecase) HandleWebhook(ctx context.Context, payload []byte, signature string) error {
-	return domain.ErrNotImplemented
+	u.webhookCalls++
+	u.gotWebhookPayload = append([]byte(nil), payload...)
+	u.gotWebhookSignature = signature
+	return u.webhookErr
 }
 
 func (u *billingHandlerTestUsecase) GetUsage(ctx context.Context, accountID, actorUserID string, periodStart, periodEnd string) (*domain.UsageReport, error) {
@@ -276,7 +366,11 @@ func (u *billingHandlerTestUsecase) GetUsage(ctx context.Context, accountID, act
 
 func (u *billingHandlerTestUsecase) RecordUsage(ctx context.Context, ev *domain.UsageEvent) (*domain.UsageRecordResult, error) {
 	u.recordUsageCalls++
-	return &domain.UsageRecordResult{Cost: "0.00"}, nil
+	if ev != nil {
+		copy := *ev
+		u.gotUsageEvent = &copy
+	}
+	return &domain.UsageRecordResult{EventID: ev.EventID, Cost: "0.00"}, nil
 }
 
 func (u *billingHandlerTestUsecase) UpdateBudget(ctx context.Context, accountID, actorUserID string, budgetLimit string) (string, error) {

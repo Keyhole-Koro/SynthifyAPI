@@ -181,10 +181,11 @@ func (h *BillingHandler) RecordUsage(ctx context.Context, req *connect.Request[t
 	if !middleware.IsServiceCall(ctx) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("service token required"))
 	}
-	if req.Msg.GetAccountId() == "" || req.Msg.GetModel() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("account_id and model are required"))
+	if req.Msg.GetAccountId() == "" || req.Msg.GetModel() == "" || req.Msg.GetEventId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("event_id, account_id, and model are required"))
 	}
 	ev := &domain.UsageEvent{
+		EventID:      req.Msg.GetEventId(),
 		AccountID:    req.Msg.GetAccountId(),
 		WorkspaceID:  req.Msg.GetWorkspaceId(),
 		JobID:        req.Msg.GetJobId(),
