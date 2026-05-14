@@ -75,7 +75,6 @@ func main() {
 		middleware.Logger(appLogger,
 			middleware.CORS(cfg.CORSAllowedOrigins,
 				// log-viewer など read-only ツールは API を経由せず Postgres を直接参照する設計
-				// (docs/improvements/log-viewer-direct-db.md)。anonymous バイパスは廃止。
 				middleware.WithAuth(cfg.FirebaseProjectID, appLogger,
 					withJobLogger(jobLogger, mux),
 				),
