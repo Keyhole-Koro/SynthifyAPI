@@ -217,7 +217,7 @@ func TestJobHandler_AuthFlow(t *testing.T) {
 
 func newTestWorkspaceHandler(store *mock.Store) *WorkspaceHandler {
 	svc := service.NewWorkspaceService(store, store, nil)
-	return NewWorkspaceHandler(svc, store)
+	return NewWorkspaceHandler(svc, nil, store)
 }
 
 func newTestDocumentHandler(store *mock.Store) *DocumentHandler {

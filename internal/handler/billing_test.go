@@ -387,3 +387,15 @@ func (u *billingHandlerTestUsecase) ListPaymentMethods(ctx context.Context, acco
 	u.listPaymentMethodsCalls++
 	return nil, nil
 }
+
+func (u *billingHandlerTestUsecase) GrantFreeSignupCredit(_ context.Context, _ string) error {
+	return nil
+}
+
+func (u *billingHandlerTestUsecase) GrantCredit(_ context.Context, _, _ string, _ int64, _ string) (*domain.CreditGrant, error) {
+	return &domain.CreditGrant{CreditID: "test-credit"}, nil
+}
+
+func (u *billingHandlerTestUsecase) GetCreditBalance(_ context.Context, _, _ string) (int64, error) {
+	return 100, nil
+}

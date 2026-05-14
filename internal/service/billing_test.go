@@ -299,6 +299,8 @@ func TestRecordUsage_ComputesCostFromPricing_PersistsEventAndRollup(t *testing.T
 	})
 	provider := &billingTestProvider{}
 	svc := NewBillingService(store, store, provider, logger)
+	// 無料クレジット付与（残高0だと free アカウントが CreditStopped になるため）
+	require.NoError(t, svc.GrantFreeSignupCredit(ctx, account.AccountID))
 
 	ev := &domain.UsageEvent{
 		EventID:      "evt-1",
@@ -315,7 +317,8 @@ func TestRecordUsage_ComputesCostFromPricing_PersistsEventAndRollup(t *testing.T
 	require.NotNil(t, result)
 	// 1M input * $3/M = $3.00, 500K output * $15/M = $7.50, total = $10.50
 	assert.Equal(t, "10.50", result.Cost)
-	assert.False(t, result.BudgetExceeded)
+	assert.False(t, result.BudgetExceeded, "budget not set, should not be exceeded")
+	assert.False(t, result.CreditStopped, "credit granted, should not be stopped")
 	assert.Equal(t, 1, provider.reportTokenUsageCalls, "should also push to Stripe meter")
 
 	events := store.UsageEvents()
@@ -372,6 +375,8 @@ func TestRecordUsage_TogglesBudgetExceededOnFirstCross(t *testing.T) {
 		Currency:                 "usd",
 	})
 	svc := NewBillingService(store, store, &billingTestProvider{}, logger)
+	err = svc.GrantFreeSignupCredit(ctx, account.AccountID)
+	require.NoError(t, err)
 
 	// First call: 300 tokens -> 300 minor. Under budget (500).
 	first, err := svc.RecordUsage(ctx, &domain.UsageEvent{

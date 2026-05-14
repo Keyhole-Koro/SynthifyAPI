@@ -61,7 +61,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stripe/webhook", handler.NewBillingWebhookHTTPHandler(billingService, appLogger))
 	mux.Handle(treev1connect.NewBillingServiceHandler(handler.NewBillingHandler(billingService), connectHandlerOpts...))
-	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService, store), connectHandlerOpts...))
+	mux.Handle(treev1connect.NewWorkspaceServiceHandler(handler.NewWorkspaceHandler(workspaceService, billingService, store), connectHandlerOpts...))
 	mux.Handle(treev1connect.NewDocumentServiceHandler(handler.NewDocumentHandler(documentService, store, store, app.NewDocumentUploadURLBuilder(cfg.GCSUploadURLBase)), connectHandlerOpts...))
 	mux.Handle(treev1connect.NewJobServiceHandler(jobHandler, connectHandlerOpts...))
 	mux.Handle(treev1connect.NewTreeServiceHandler(treeHandler, connectHandlerOpts...))

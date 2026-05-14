@@ -65,6 +65,7 @@ func (h *BillingHandler) GetBillingAccount(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, connectutil.ToError(err)
 	}
+	creditBalance, _ := h.service.GetCreditBalance(ctx, req.Msg.GetAccountId(), user.ID)
 	return connect.NewResponse(&treev1.GetBillingAccountResponse{
 		AccountId:              account.AccountID,
 		Plan:                   account.Plan,
@@ -82,6 +83,8 @@ func (h *BillingHandler) GetBillingAccount(ctx context.Context, req *connect.Req
 		CurrentPeriodUsage:     minorToDecimal(account.CurrentPeriodUsageMinor),
 		CurrentPeriodStartedAt: account.CurrentPeriodStartedAt,
 		BudgetExceeded:         account.BudgetExceeded,
+		CreditBalance:          minorToDecimal(creditBalance),
+		CreditStopped:          account.Plan == string(domain.BillingPlanFree) && creditBalance <= 0,
 	}), nil
 }
 
@@ -250,6 +253,47 @@ func (h *BillingHandler) ListInvoices(ctx context.Context, req *connect.Request[
 		})
 	}
 	return connect.NewResponse(resp), nil
+}
+
+func (h *BillingHandler) GrantCredit(ctx context.Context, req *connect.Request[treev1.GrantCreditRequest]) (*connect.Response[treev1.GrantCreditResponse], error) {
+	if req.Msg.GetAccountId() == "" || req.Msg.GetAmountMinor() <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("account_id and amount_minor > 0 are required"))
+	}
+	user, err := currentUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	grant, err := h.service.GrantCredit(ctx, user.ID, req.Msg.GetAccountId(), req.Msg.GetAmountMinor(), req.Msg.GetNote())
+	if err != nil {
+		return nil, connectutil.ToError(err)
+	}
+	balance, _ := h.service.GetCreditBalance(ctx, req.Msg.GetAccountId(), user.ID)
+	return connect.NewResponse(&treev1.GrantCreditResponse{
+		CreditId:      grant.CreditID,
+		AccountId:     grant.AccountID,
+		AmountMinor:   grant.AmountMinor,
+		CreditBalance: minorToDecimal(balance),
+	}), nil
+}
+
+func (h *BillingHandler) GetCreditBalance(ctx context.Context, req *connect.Request[treev1.GetCreditBalanceRequest]) (*connect.Response[treev1.GetCreditBalanceResponse], error) {
+	if req.Msg.GetAccountId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("account_id is required"))
+	}
+	user, err := currentUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	balance, err := h.service.GetCreditBalance(ctx, req.Msg.GetAccountId(), user.ID)
+	if err != nil {
+		return nil, connectutil.ToError(err)
+	}
+	account, _ := h.service.GetBillingAccount(ctx, req.Msg.GetAccountId(), user.ID)
+	stopped := account != nil && account.Plan == string(domain.BillingPlanFree) && balance <= 0
+	return connect.NewResponse(&treev1.GetCreditBalanceResponse{
+		CreditBalance: minorToDecimal(balance),
+		CreditStopped: stopped,
+	}), nil
 }
 
 func (h *BillingHandler) ListPaymentMethods(ctx context.Context, req *connect.Request[treev1.ListPaymentMethodsRequest]) (*connect.Response[treev1.ListPaymentMethodsResponse], error) {

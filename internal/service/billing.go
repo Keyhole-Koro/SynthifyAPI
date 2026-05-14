@@ -20,12 +20,16 @@ type BillingUsecase interface {
 	CreatePortalSession(ctx context.Context, accountID, actorUserID string) (*domain.BillingPortalSession, error)
 	HandleWebhook(ctx context.Context, payload []byte, signature string) error
 
-	// Phase 1-3 usage-based billing (stub — not wired to Stripe / worker yet)
 	GetUsage(ctx context.Context, accountID, actorUserID string, periodStart, periodEnd string) (*domain.UsageReport, error)
 	RecordUsage(ctx context.Context, ev *domain.UsageEvent) (*domain.UsageRecordResult, error)
 	UpdateBudget(ctx context.Context, accountID, actorUserID string, budgetLimit string) (string, error)
 	ListInvoices(ctx context.Context, accountID, actorUserID string, limit int) (*domain.InvoiceList, error)
 	ListPaymentMethods(ctx context.Context, accountID, actorUserID string) ([]*domain.PaymentMethod, error)
+
+	// Credits
+	GrantFreeSignupCredit(ctx context.Context, accountID string) error
+	GrantCredit(ctx context.Context, actorUserID, accountID string, amountMinor int64, note string) (*domain.CreditGrant, error)
+	GetCreditBalance(ctx context.Context, accountID, actorUserID string) (int64, error)
 }
 
 type BillingProvider interface {
@@ -443,7 +447,44 @@ func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent)
 	ev.CostMinor = costMinor
 	ev.Currency = currency
 
-	// 2. Persist raw event, daily rollup, and account accumulator atomically.
+	// 2. クレジット残高チェック: 残高があればそこから消費、なければ postpaid として続行。
+	//    残高が 0 かつ plan が free のとき → ジョブ停止。
+	creditStopped := false
+	if costMinor > 0 {
+		balance, balErr := s.usage.GetCreditBalance(ctx, ev.AccountID)
+		if balErr == nil {
+			account, accErr := s.accounts.GetAccount(ctx, ev.AccountID)
+			isFree := accErr == nil && account != nil && account.Plan == string(domain.BillingPlanFree)
+			if balance > 0 {
+				// クレジットから消費（負の grant として記録）
+				deduct := &domain.CreditGrant{
+					CreditID:    "deduct-" + ev.EventID,
+					AccountID:   ev.AccountID,
+					CreditType:  domain.CreditTypeConsumed,
+					AmountMinor: -costMinor,
+					Currency:    currency,
+					Note:        "usage:" + ev.EventID,
+					GrantedBy:   "system",
+					GrantedAt:   s.now().UTC().Format("2006-01-02T15:04:05Z"),
+				}
+				if err := s.usage.GrantCredit(ctx, deduct); err != nil {
+					s.logger.Warn(ctx, "billing.record_usage.credit_deduct_failed", err, map[string]any{
+						"event_id":   ev.EventID,
+						"account_id": ev.AccountID,
+					})
+				}
+			} else if isFree {
+				// 無料ユーザーかつ残高0 → 停止
+				creditStopped = true
+				s.logger.Info(ctx, "billing.record_usage.credit_exhausted", map[string]any{
+					"account_id": ev.AccountID,
+					"event_id":   ev.EventID,
+				})
+			}
+		}
+	}
+
+	// 3. Persist raw event, daily rollup, and account accumulator atomically.
 	date := s.now().UTC().Format("2006-01-02")
 	_, exceeded, err := s.usage.RecordUsageAccounting(ctx, ev, date)
 	if err != nil {
@@ -451,13 +492,14 @@ func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent)
 		return nil, err
 	}
 
-	// 3. Stripe meter event (best-effort).
+	// 4. Stripe meter event (best-effort、有料ユーザーのみ意味がある).
 	s.reportStripeMeter(ctx, ev)
 
 	return &domain.UsageRecordResult{
 		EventID:        ev.EventID,
 		Cost:           formatMinor(costMinor, currency),
-		BudgetExceeded: exceeded,
+		BudgetExceeded: exceeded || creditStopped,
+		CreditStopped:  creditStopped,
 	}, nil
 }
 
@@ -594,4 +636,75 @@ func (s *billingService) ListPaymentMethods(ctx context.Context, accountID, acto
 		return nil, nil
 	}
 	return s.usage.ListPaymentMethods(ctx, accountID)
+}
+
+// =========================================================
+// Credits
+// =========================================================
+
+// GrantFreeSignupCredit は新規アカウント作成時に $1 の無料クレジットを付与する。
+// 既に付与済みの場合は冪等に何もしない（credit_id が衝突するため）。
+func (s *billingService) GrantFreeSignupCredit(ctx context.Context, accountID string) error {
+	if s.usage == nil {
+		return nil
+	}
+	grant := &domain.CreditGrant{
+		CreditID:    "free-signup-" + accountID,
+		AccountID:   accountID,
+		CreditType:  domain.CreditTypeFree,
+		AmountMinor: domain.FreeSignupCreditMinor,
+		Currency:    "usd",
+		Note:        "signup bonus",
+		GrantedBy:   "system",
+		GrantedAt:   s.now().UTC().Format("2006-01-02T15:04:05Z"),
+	}
+	if err := s.usage.GrantCredit(ctx, grant); err != nil {
+		s.logger.Warn(ctx, "billing.grant_free_signup_credit.failed", err, map[string]any{
+			"account_id": accountID,
+		})
+		return err
+	}
+	s.logger.Info(ctx, "billing.grant_free_signup_credit.ok", map[string]any{
+		"account_id":   accountID,
+		"amount_minor": domain.FreeSignupCreditMinor,
+	})
+	return nil
+}
+
+// GrantCredit は admin が任意アカウントにクレジットを付与する。
+func (s *billingService) GrantCredit(ctx context.Context, actorUserID, accountID string, amountMinor int64, note string) (*domain.CreditGrant, error) {
+	if amountMinor <= 0 {
+		return nil, domain.ErrBillingBudgetInvalid
+	}
+	if s.usage == nil {
+		return nil, domain.ErrBillingProviderNotConfigured
+	}
+	grant := &domain.CreditGrant{
+		CreditID:    newCreditID(),
+		AccountID:   accountID,
+		CreditType:  domain.CreditTypeFree,
+		AmountMinor: amountMinor,
+		Currency:    "usd",
+		Note:        note,
+		GrantedBy:   actorUserID,
+		GrantedAt:   s.now().UTC().Format("2006-01-02T15:04:05Z"),
+	}
+	if err := s.usage.GrantCredit(ctx, grant); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+func (s *billingService) GetCreditBalance(ctx context.Context, accountID, actorUserID string) (int64, error) {
+	if _, err := s.authorizeAccount(ctx, accountID, actorUserID); err != nil {
+		return 0, err
+	}
+	if s.usage == nil {
+		return 0, nil
+	}
+	return s.usage.GetCreditBalance(ctx, accountID)
+}
+
+func newCreditID() string {
+	return fmt.Sprintf("credit-%d", time.Now().UnixNano())
 }
