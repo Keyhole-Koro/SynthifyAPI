@@ -39,7 +39,7 @@ func main() {
 	notifier := appCtx.Notifier
 
 	jobLogger := postgres.NewDBLogger(store)
-	nrApp, err := observability.InitNewRelic(cfg, slogLogger)
+	nrApp, err := observability.InitNewRelic(cfg.NewRelic, slogLogger)
 	if err != nil {
 		log.Fatalf("failed to initialize new relic: %v", err)
 	}
@@ -75,7 +75,7 @@ func main() {
 		middleware.Logger(appLogger,
 			middleware.CORS(cfg.CORSAllowedOrigins,
 				// log-viewer など read-only ツールは API を経由せず Postgres を直接参照する設計
-				middleware.WithAuth(ctx, cfg.FirebaseProjectID, appLogger,
+				middleware.WithAuth(cfg.FirebaseProjectID, appLogger,
 					withJobLogger(jobLogger, mux),
 				),
 			),
@@ -98,17 +98,17 @@ func initDispatcher(cfg config.API) service.WorkerDispatcher {
 
 func initBillingProvider(cfg config.API) (service.BillingProvider, error) {
 	provider, err := stripebilling.NewProvider(stripebilling.Config{
-		SecretKey:        cfg.StripeSecretKey,
-		WebhookSecret:    cfg.StripeWebhookSecret,
-		ProPriceID:       cfg.StripeProPriceID,
-		ProPriceIDJPY:    cfg.StripeProPriceIDJPY,
-		ProPriceIDUSD:    cfg.StripeProPriceIDUSD,
-		DefaultCurrency:  cfg.StripeDefaultCurrency,
-		SuccessURL:       cfg.BillingSuccessURL,
-		CancelURL:        cfg.BillingCancelURL,
-		PortalReturnURL:  cfg.BillingPortalReturnURL,
-		MeterInputEvent:  cfg.StripeMeterInputEvent,
-		MeterOutputEvent: cfg.StripeMeterOutputEvent,
+		SecretKey:        cfg.Stripe.SecretKey,
+		WebhookSecret:    cfg.Stripe.WebhookSecret,
+		ProPriceID:       cfg.Stripe.ProPriceID,
+		ProPriceIDJPY:    cfg.Stripe.ProPriceIDJPY,
+		ProPriceIDUSD:    cfg.Stripe.ProPriceIDUSD,
+		DefaultCurrency:  cfg.Stripe.DefaultCurrency,
+		SuccessURL:       cfg.Billing.SuccessURL,
+		CancelURL:        cfg.Billing.CancelURL,
+		PortalReturnURL:  cfg.Billing.PortalReturnURL,
+		MeterInputEvent:  cfg.Stripe.MeterInputEvent,
+		MeterOutputEvent: cfg.Stripe.MeterOutputEvent,
 	})
 	if errors.Is(err, domain.ErrBillingProviderNotConfigured) {
 		return nil, nil

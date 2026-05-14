@@ -9,14 +9,14 @@ import (
 	"github.com/synthify/backend/packages/shared/config"
 )
 
-func InitNewRelic(cfg config.API, logger *slog.Logger) (*newrelic.Application, error) {
-	if cfg.NewRelicLicenseKey == "" {
+func InitNewRelic(cfg config.NewRelic, logger *slog.Logger) (*newrelic.Application, error) {
+	if cfg.LicenseKey == "" {
 		return nil, nil
 	}
 
 	opts := []newrelic.ConfigOption{
-		newrelic.ConfigAppName(cfg.NewRelicAppName),
-		newrelic.ConfigLicense(cfg.NewRelicLicenseKey),
+		newrelic.ConfigAppName(cfg.AppName),
+		newrelic.ConfigLicense(cfg.LicenseKey),
 	}
 	if logger != nil {
 		opts = append(opts, nrslog.ConfigLogger(logger.WithGroup("newrelic")))
