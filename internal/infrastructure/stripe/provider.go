@@ -21,16 +21,18 @@ import (
 const defaultAPIBase = "https://api.stripe.com"
 
 type Config struct {
-	SecretKey       string
-	WebhookSecret   string
-	ProPriceID      string
-	ProPriceIDJPY   string
-	ProPriceIDUSD   string
-	DefaultCurrency string
-	SuccessURL      string
-	CancelURL       string
-	PortalReturnURL string
-	APIBase         string
+	SecretKey         string
+	WebhookSecret     string
+	ProPriceID        string
+	ProPriceIDJPY     string
+	ProPriceIDUSD     string
+	DefaultCurrency   string
+	SuccessURL        string
+	CancelURL         string
+	PortalReturnURL   string
+	APIBase           string
+	MeterInputEvent   string
+	MeterOutputEvent  string
 }
 
 type Price struct {
@@ -43,7 +45,7 @@ type Price struct {
 
 type Provider struct {
 	cfg             Config
-	pricesByKey     map[string]Price
+	pricesByKey     map[string][]Price
 	pricesByID      map[string]Price
 	defaultCurrency domain.BillingCurrency
 	client          *http.Client
@@ -80,7 +82,7 @@ func NewProvider(cfg Config) (*Provider, error) {
 	}, nil
 }
 
-func buildPriceCatalog(cfg Config) (map[string]Price, map[string]Price, domain.BillingCurrency, error) {
+func buildPriceCatalog(cfg Config) (map[string][]Price, map[string]Price, domain.BillingCurrency, error) {
 	defaultCurrency := domain.BillingCurrency(strings.ToLower(strings.TrimSpace(cfg.DefaultCurrency)))
 	if defaultCurrency == "" {
 		defaultCurrency = domain.BillingCurrencyJPY
@@ -88,40 +90,61 @@ func buildPriceCatalog(cfg Config) (map[string]Price, map[string]Price, domain.B
 	if err := defaultCurrency.Validate(); err != nil {
 		return nil, nil, "", err
 	}
-	prices := []Price{
-		{
-			Plan:     domain.BillingPlanPro,
-			Currency: domain.BillingCurrencyJPY,
+	type currencyGroup struct {
+		currency domain.BillingCurrency
+		raw      string
+	}
+	groups := []currencyGroup{
+		{domain.BillingCurrencyJPY, cfg.ProPriceIDJPY},
+		{domain.BillingCurrencyUSD, cfg.ProPriceIDUSD},
+	}
+
+	byKey := make(map[string][]Price)
+	byID := make(map[string]Price)
+	addPrice := func(currency domain.BillingCurrency, stripeID string) {
+		price := Price{
+			Plan:     domain.BillingPlanUsageBased,
+			Currency: currency,
 			Interval: domain.BillingIntervalMonth,
-			StripeID: strings.TrimSpace(cfg.ProPriceIDJPY),
-		},
-		{
-			Plan:     domain.BillingPlanPro,
-			Currency: domain.BillingCurrencyUSD,
-			Interval: domain.BillingIntervalMonth,
-			StripeID: strings.TrimSpace(cfg.ProPriceIDUSD),
-		},
+			StripeID: stripeID,
+		}
+		key := priceKey(price.Plan, price.Currency)
+		byKey[key] = append(byKey[key], price)
+		byID[stripeID] = price
+	}
+
+	for _, g := range groups {
+		for _, id := range splitPriceIDs(g.raw) {
+			addPrice(g.currency, id)
+		}
 	}
 	if cfg.ProPriceID != "" {
-		for i := range prices {
-			if prices[i].Currency == defaultCurrency && prices[i].StripeID == "" {
-				prices[i].StripeID = strings.TrimSpace(cfg.ProPriceID)
+		// Legacy single price falls back to the default currency only when nothing else is configured for it.
+		if _, ok := byKey[priceKey(domain.BillingPlanUsageBased, defaultCurrency)]; !ok {
+			for _, id := range splitPriceIDs(cfg.ProPriceID) {
+				addPrice(defaultCurrency, id)
 			}
 		}
-	}
-	byKey := make(map[string]Price)
-	byID := make(map[string]Price)
-	for _, price := range prices {
-		if price.StripeID == "" {
-			continue
-		}
-		byKey[priceKey(price.Plan, price.Currency)] = price
-		byID[price.StripeID] = price
 	}
 	if len(byKey) == 0 {
 		return nil, nil, "", fmt.Errorf("%w: STRIPE_PRO_PRICE_ID_JPY or STRIPE_PRO_PRICE_ID_USD is required", domain.ErrBillingProviderMisconfigured)
 	}
 	return byKey, byID, defaultCurrency, nil
+}
+
+func splitPriceIDs(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if id := strings.TrimSpace(p); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func priceKey(plan domain.BillingPlan, currency domain.BillingCurrency) string {
@@ -148,32 +171,37 @@ func (p *Provider) EnsureCustomer(ctx context.Context, account *domain.Account) 
 }
 
 func (p *Provider) CreateCheckoutSession(ctx context.Context, account *domain.Account, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error) {
-	if plan != domain.BillingPlanPro {
+	if plan != domain.BillingPlanUsageBased {
 		return nil, fmt.Errorf("%w: %s", domain.ErrBillingPlanInvalid, plan)
 	}
 	if account.StripeCustomerID == "" {
 		return nil, fmt.Errorf("%w: account has no Stripe customer", domain.ErrBillingProviderMisconfigured)
 	}
-	price, err := p.resolvePrice(plan, currency)
+	prices, err := p.resolvePrices(plan, currency)
 	if err != nil {
 		return nil, err
 	}
+	resolvedCurrency := prices[0].Currency
 	form := url.Values{}
 	form.Set("mode", "subscription")
 	form.Set("customer", account.StripeCustomerID)
-	form.Set("line_items[0][price]", price.StripeID)
-	form.Set("line_items[0][quantity]", "1")
+	for i, price := range prices {
+		prefix := fmt.Sprintf("line_items[%d]", i)
+		form.Set(prefix+"[price]", price.StripeID)
+		// Metered prices ignore quantity; Stripe rejects "quantity" on them.
+		// Skip the field entirely — flat-rate prices default to 1.
+	}
 	form.Set("success_url", p.cfg.SuccessURL)
 	form.Set("cancel_url", p.cfg.CancelURL)
 	form.Set("metadata[account_id]", account.AccountID)
-	form.Set("metadata[currency]", string(price.Currency))
+	form.Set("metadata[currency]", string(resolvedCurrency))
 	form.Set("subscription_data[metadata][account_id]", account.AccountID)
-	form.Set("subscription_data[metadata][currency]", string(price.Currency))
+	form.Set("subscription_data[metadata][currency]", string(resolvedCurrency))
 	form.Set("allow_promotion_codes", "true")
 	var res struct {
 		URL string `json:"url"`
 	}
-	if err := p.postForm(ctx, "/v1/checkout/sessions", form, "checkout:"+account.AccountID+":"+string(plan)+":"+string(price.Currency), &res); err != nil {
+	if err := p.postForm(ctx, "/v1/checkout/sessions", form, "checkout:"+account.AccountID+":"+string(plan)+":"+string(resolvedCurrency), &res); err != nil {
 		return nil, err
 	}
 	if res.URL == "" {
@@ -182,18 +210,18 @@ func (p *Provider) CreateCheckoutSession(ctx context.Context, account *domain.Ac
 	return &domain.BillingCheckoutSession{URL: res.URL}, nil
 }
 
-func (p *Provider) resolvePrice(plan domain.BillingPlan, currency domain.BillingCurrency) (Price, error) {
+func (p *Provider) resolvePrices(plan domain.BillingPlan, currency domain.BillingCurrency) ([]Price, error) {
 	if currency == "" {
 		currency = p.defaultCurrency
 	}
 	if err := currency.Validate(); err != nil {
-		return Price{}, err
+		return nil, err
 	}
-	price, ok := p.pricesByKey[priceKey(plan, currency)]
-	if !ok {
-		return Price{}, fmt.Errorf("%w: %s", domain.ErrBillingCurrencyUnsupported, currency)
+	prices, ok := p.pricesByKey[priceKey(plan, currency)]
+	if !ok || len(prices) == 0 {
+		return nil, fmt.Errorf("%w: %s", domain.ErrBillingCurrencyUnsupported, currency)
 	}
-	return price, nil
+	return prices, nil
 }
 
 func (p *Provider) CreatePortalSession(ctx context.Context, account *domain.Account) (*domain.BillingPortalSession, error) {
@@ -213,6 +241,38 @@ func (p *Provider) CreatePortalSession(ctx context.Context, account *domain.Acco
 		return nil, fmt.Errorf("%w: portal session response missing url", domain.ErrBillingProviderMisconfigured)
 	}
 	return &domain.BillingPortalSession{URL: res.URL}, nil
+}
+
+// ReportTokenUsage sends Stripe Billing meter events for LLM token usage.
+// Input/output token counts go to separate meters configured via MeterInputEvent / MeterOutputEvent.
+// identifier is used as idempotency key (suffixed per-side) so repeated calls are deduplicated.
+// Silently no-ops when the account has no Stripe customer or meter events are not configured.
+func (p *Provider) ReportTokenUsage(ctx context.Context, account *domain.Account, identifier string, inputTokens, outputTokens int64) error {
+	if account == nil || account.StripeCustomerID == "" {
+		return nil
+	}
+	if err := p.reportMeterEvent(ctx, account.StripeCustomerID, p.cfg.MeterInputEvent, inputTokens, identifier+":in"); err != nil {
+		return err
+	}
+	return p.reportMeterEvent(ctx, account.StripeCustomerID, p.cfg.MeterOutputEvent, outputTokens, identifier+":out")
+}
+
+func (p *Provider) reportMeterEvent(ctx context.Context, customerID, eventName string, value int64, identifier string) error {
+	if strings.TrimSpace(eventName) == "" || value <= 0 {
+		return nil
+	}
+	form := url.Values{}
+	form.Set("event_name", eventName)
+	form.Set("payload[stripe_customer_id]", customerID)
+	form.Set("payload[value]", strconv.FormatInt(value, 10))
+	if identifier != "" {
+		form.Set("identifier", identifier)
+	}
+	form.Set("timestamp", strconv.FormatInt(p.now().Unix(), 10))
+	var res struct {
+		Identifier string `json:"identifier"`
+	}
+	return p.postForm(ctx, "/v1/billing/meter_events", form, "meter:"+identifier, &res)
 }
 
 func (p *Provider) ParseWebhook(ctx context.Context, payload []byte, signature string) (*domain.ProviderWebhookEvent, error) {

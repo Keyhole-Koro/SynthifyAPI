@@ -44,7 +44,7 @@ func TestBillingHandler_CreateCheckoutSession_UsesAuthenticatedUser(t *testing.T
 	assert.Equal(t, 1, svc.createCheckoutCalls)
 	assert.Equal(t, "owner", svc.gotCheckoutAccountID)
 	assert.Equal(t, "owner", svc.gotCheckoutActorUserID)
-	assert.Equal(t, domain.BillingPlanPro, svc.gotCheckoutPlan)
+	assert.Equal(t, domain.BillingPlanUsageBased, svc.gotCheckoutPlan)
 	assert.Equal(t, domain.BillingCurrencyUSD, svc.gotCheckoutCurrency)
 }
 

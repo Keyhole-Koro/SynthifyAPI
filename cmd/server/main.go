@@ -98,15 +98,17 @@ func initDispatcher(cfg config.API) service.WorkerDispatcher {
 
 func initBillingProvider(cfg config.API) (service.BillingProvider, error) {
 	provider, err := stripebilling.NewProvider(stripebilling.Config{
-		SecretKey:       cfg.StripeSecretKey,
-		WebhookSecret:   cfg.StripeWebhookSecret,
-		ProPriceID:      cfg.StripeProPriceID,
-		ProPriceIDJPY:   cfg.StripeProPriceIDJPY,
-		ProPriceIDUSD:   cfg.StripeProPriceIDUSD,
-		DefaultCurrency: cfg.StripeDefaultCurrency,
-		SuccessURL:      cfg.BillingSuccessURL,
-		CancelURL:       cfg.BillingCancelURL,
-		PortalReturnURL: cfg.BillingPortalReturnURL,
+		SecretKey:        cfg.StripeSecretKey,
+		WebhookSecret:    cfg.StripeWebhookSecret,
+		ProPriceID:       cfg.StripeProPriceID,
+		ProPriceIDJPY:    cfg.StripeProPriceIDJPY,
+		ProPriceIDUSD:    cfg.StripeProPriceIDUSD,
+		DefaultCurrency:  cfg.StripeDefaultCurrency,
+		SuccessURL:       cfg.BillingSuccessURL,
+		CancelURL:        cfg.BillingCancelURL,
+		PortalReturnURL:  cfg.BillingPortalReturnURL,
+		MeterInputEvent:  cfg.StripeMeterInputEvent,
+		MeterOutputEvent: cfg.StripeMeterOutputEvent,
 	})
 	if errors.Is(err, domain.ErrBillingProviderNotConfigured) {
 		return nil, nil

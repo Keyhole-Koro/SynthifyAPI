@@ -105,7 +105,7 @@ func (h *BillingHandler) CreateCheckoutSession(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	session, err := h.service.CreateCheckoutSession(ctx, req.Msg.GetAccountId(), user.ID, domain.BillingPlanPro, domain.BillingCurrency(req.Msg.GetCurrency()))
+	session, err := h.service.CreateCheckoutSession(ctx, req.Msg.GetAccountId(), user.ID, domain.BillingPlanUsageBased, domain.BillingCurrency(req.Msg.GetCurrency()))
 	if err != nil {
 		return nil, connectutil.ToError(err)
 	}

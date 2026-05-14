@@ -38,7 +38,7 @@ func TestCreateCheckoutSession_OtherUser_DeniedAndReturnsNotFound(t *testing.T) 
 	require.NoError(t, err)
 	svc := NewBillingService(store, provider, logger)
 
-	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "stranger", domain.BillingPlanPro, "")
+	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "stranger", domain.BillingPlanUsageBased, "")
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
@@ -56,7 +56,7 @@ func TestCreateCheckoutSession_InvalidCurrency_WarnsAndReturnsError(t *testing.T
 	provider := &billingTestProvider{}
 	svc := NewBillingService(store, provider, logger)
 
-	session, err := svc.CreateCheckoutSession(ctx, "acc-1", "user-1", domain.BillingPlanPro, domain.BillingCurrency("eur"))
+	session, err := svc.CreateCheckoutSession(ctx, "acc-1", "user-1", domain.BillingPlanUsageBased, domain.BillingCurrency("eur"))
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrBillingCurrencyUnsupported)
@@ -75,7 +75,7 @@ func TestCreateCheckoutSession_ProviderNotConfigured_LogsError(t *testing.T) {
 	require.NoError(t, err)
 
 	svc := NewBillingService(store, nil, logger)
-	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "owner", domain.BillingPlanPro, "")
+	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "owner", domain.BillingPlanUsageBased, "")
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrBillingProviderNotConfigured)
@@ -94,14 +94,14 @@ func TestCreateCheckoutSession_Success_LogsInfo(t *testing.T) {
 	provider := &billingTestProvider{
 		createCheckoutFn: func(ctx context.Context, gotAccount *domain.Account, gotPlan domain.BillingPlan, gotCurrency domain.BillingCurrency) (*domain.BillingCheckoutSession, error) {
 			assert.Equal(t, account.AccountID, gotAccount.AccountID)
-			assert.Equal(t, domain.BillingPlanPro, gotPlan)
+			assert.Equal(t, domain.BillingPlanUsageBased, gotPlan)
 			assert.Empty(t, gotCurrency)
 			return &domain.BillingCheckoutSession{URL: "https://checkout.example/session"}, nil
 		},
 	}
 	svc := NewBillingService(store, provider, logger)
 
-	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "owner", domain.BillingPlanPro, "")
+	session, err := svc.CreateCheckoutSession(ctx, account.AccountID, "owner", domain.BillingPlanUsageBased, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, session)
@@ -393,14 +393,16 @@ func TestListPaymentMethods_Success_ReturnsEmptyList(t *testing.T) {
 }
 
 type billingTestProvider struct {
-	createCheckoutCalls int
-	createPortalCalls   int
-	parseWebhookCalls   int
+	createCheckoutCalls   int
+	createPortalCalls     int
+	parseWebhookCalls     int
+	reportTokenUsageCalls int
 
-	ensureCustomerFn func(ctx context.Context, account *domain.Account) (*domain.BillingCustomerRef, error)
-	createCheckoutFn func(ctx context.Context, account *domain.Account, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error)
-	createPortalFn   func(ctx context.Context, account *domain.Account) (*domain.BillingPortalSession, error)
-	parseWebhookFn   func(ctx context.Context, payload []byte, signature string) (*domain.ProviderWebhookEvent, error)
+	ensureCustomerFn   func(ctx context.Context, account *domain.Account) (*domain.BillingCustomerRef, error)
+	createCheckoutFn   func(ctx context.Context, account *domain.Account, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error)
+	createPortalFn     func(ctx context.Context, account *domain.Account) (*domain.BillingPortalSession, error)
+	parseWebhookFn     func(ctx context.Context, payload []byte, signature string) (*domain.ProviderWebhookEvent, error)
+	reportTokenUsageFn func(ctx context.Context, account *domain.Account, identifier string, inputTokens, outputTokens int64) error
 }
 
 func (p *billingTestProvider) EnsureCustomer(ctx context.Context, account *domain.Account) (*domain.BillingCustomerRef, error) {
@@ -432,6 +434,14 @@ func (p *billingTestProvider) ParseWebhook(ctx context.Context, payload []byte, 
 		return nil, errors.New("parseWebhookFn is not set")
 	}
 	return p.parseWebhookFn(ctx, payload, signature)
+}
+
+func (p *billingTestProvider) ReportTokenUsage(ctx context.Context, account *domain.Account, identifier string, inputTokens, outputTokens int64) error {
+	p.reportTokenUsageCalls++
+	if p.reportTokenUsageFn == nil {
+		return nil
+	}
+	return p.reportTokenUsageFn(ctx, account, identifier, inputTokens, outputTokens)
 }
 
 type billingTestLogger struct {

@@ -29,6 +29,7 @@ type BillingProvider interface {
 	CreateCheckoutSession(ctx context.Context, account *domain.Account, plan domain.BillingPlan, currency domain.BillingCurrency) (*domain.BillingCheckoutSession, error)
 	CreatePortalSession(ctx context.Context, account *domain.Account) (*domain.BillingPortalSession, error)
 	ParseWebhook(ctx context.Context, payload []byte, signature string) (*domain.ProviderWebhookEvent, error)
+	ReportTokenUsage(ctx context.Context, account *domain.Account, identifier string, inputTokens, outputTokens int64) error
 }
 
 type billingService struct {
@@ -382,6 +383,20 @@ func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent)
 		"input_tokens":  ev.InputTokens,
 		"output_tokens": ev.OutputTokens,
 	})
+
+	if s.provider != nil {
+		account, err := s.accounts.GetAccount(ctx, ev.AccountID)
+		if err == nil && account != nil {
+			if reportErr := s.provider.ReportTokenUsage(ctx, account, ev.EventID, ev.InputTokens, ev.OutputTokens); reportErr != nil {
+				// 失敗してもジョブは継続。Stripe 側の再試行は別経路で扱う。
+				s.logger.Warn(ctx, "billing.record_usage.meter_event_failed", reportErr, map[string]any{
+					"account_id": ev.AccountID,
+					"event_id":   ev.EventID,
+				})
+			}
+		}
+	}
+
 	return &domain.UsageRecordResult{
 		EventID:        ev.EventID,
 		Cost:           "0.00",
