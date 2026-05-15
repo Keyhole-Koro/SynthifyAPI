@@ -44,7 +44,8 @@ func (h *DocumentHandler) ListDocuments(ctx context.Context, req *connect.Reques
 	docs := h.service.ListDocuments(ctx, req.Msg.GetWorkspaceId())
 	res := connect.NewResponse(&treev1.ListDocumentsResponse{})
 	for _, doc := range docs {
-		res.Msg.Documents = append(res.Msg.Documents, mappers.ToProtoDocument(doc))
+		latest, _ := h.documents.GetLatestProcessingJob(ctx, doc.DocumentID)
+		res.Msg.Documents = append(res.Msg.Documents, mappers.ToProtoDocument(doc, latest))
 	}
 	return res, nil
 }
@@ -60,7 +61,8 @@ func (h *DocumentHandler) GetDocument(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connectutil.ToError(err)
 	}
-	return connect.NewResponse(&treev1.GetDocumentResponse{Document: mappers.ToProtoDocument(doc)}), nil
+	latest, _ := h.documents.GetLatestProcessingJob(ctx, doc.DocumentID)
+	return connect.NewResponse(&treev1.GetDocumentResponse{Document: mappers.ToProtoDocument(doc, latest)}), nil
 }
 
 func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Request[treev1.CreateDocumentRequest]) (*connect.Response[treev1.CreateDocumentResponse], error) {
@@ -79,7 +81,7 @@ func (h *DocumentHandler) CreateDocument(ctx context.Context, req *connect.Reque
 		return nil, connectutil.ToError(err)
 	}
 	return connect.NewResponse(&treev1.CreateDocumentResponse{
-		Document:          mappers.ToProtoDocument(doc),
+		Document:          mappers.ToProtoDocument(doc, nil),
 		UploadUrl:         uploadURL,
 		UploadMethod:      "POST",
 		UploadContentType: req.Msg.GetMimeType(),

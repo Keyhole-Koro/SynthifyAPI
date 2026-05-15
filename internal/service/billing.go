@@ -421,7 +421,7 @@ func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent)
 			"input_tokens":  ev.InputTokens,
 			"output_tokens": ev.OutputTokens,
 		})
-		s.reportStripeMeter(ctx, ev)
+		s.reportStripeMeterPortion(ctx, ev, ev.InputTokens, ev.OutputTokens)
 		return &domain.UsageRecordResult{EventID: ev.EventID, Cost: "0.00"}, nil
 	}
 
@@ -447,42 +447,77 @@ func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent)
 	ev.CostMinor = costMinor
 	ev.Currency = currency
 
-	// 2. クレジット残高チェック: 残高があればそこから消費、なければ postpaid として続行。
-	//    残高が 0 かつ plan が free のとき → ジョブ停止。
+	// 2. 厳密版: クレジット残高があれば優先消費し、不足分は Stripe usage-based meter に流す。
+	//    - balance >= cost  : 全額 credit (paid_via=credit)
+	//    - 0 < balance < cost && usage_based : credit 全消費 + 超過分を Stripe (paid_via=mixed)
+	//    - balance <= 0   && usage_based : 全額 Stripe (paid_via=stripe)
+	//    - balance <= 0   && free        : 停止 (CreditStopped=true)
 	creditStopped := false
+	creditPortion := int64(0)
+	stripePortion := int64(0)
+	paidVia := domain.PaidViaStripe
+
 	if costMinor > 0 {
 		balance, balErr := s.usage.GetCreditBalance(ctx, ev.AccountID)
-		if balErr == nil {
-			account, accErr := s.accounts.GetAccount(ctx, ev.AccountID)
-			isFree := accErr == nil && account != nil && account.Plan == string(domain.BillingPlanFree)
-			if balance > 0 {
-				// クレジットから消費（負の grant として記録）
-				deduct := &domain.CreditGrant{
-					CreditID:    "deduct-" + ev.EventID,
-					AccountID:   ev.AccountID,
-					CreditType:  domain.CreditTypeConsumed,
-					AmountMinor: -costMinor,
-					Currency:    currency,
-					Note:        "usage:" + ev.EventID,
-					GrantedBy:   "system",
-					GrantedAt:   s.now().UTC().Format("2006-01-02T15:04:05Z"),
-				}
-				if err := s.usage.GrantCredit(ctx, deduct); err != nil {
-					s.logger.Warn(ctx, "billing.record_usage.credit_deduct_failed", err, map[string]any{
-						"event_id":   ev.EventID,
-						"account_id": ev.AccountID,
-					})
-				}
-			} else if isFree {
-				// 無料ユーザーかつ残高0 → 停止
+		if balErr != nil {
+			s.logger.Warn(ctx, "billing.record_usage.balance_lookup_failed", balErr, map[string]any{"account_id": ev.AccountID})
+		}
+		account, accErr := s.accounts.GetAccount(ctx, ev.AccountID)
+		isFree := accErr == nil && account != nil && account.Plan == string(domain.BillingPlanFree)
+
+		switch {
+		case balance >= costMinor:
+			creditPortion = costMinor
+			paidVia = domain.PaidViaCredit
+		case balance > 0:
+			creditPortion = balance
+			stripePortion = costMinor - balance
+			paidVia = domain.PaidViaMixed
+			if isFree {
+				// usage_based 未登録なのに超過した → Stripe に送れないので停止扱い。
 				creditStopped = true
-				s.logger.Info(ctx, "billing.record_usage.credit_exhausted", map[string]any{
-					"account_id": ev.AccountID,
+			}
+		case isFree:
+			// 残高なし & free plan → 停止。Stripe meter にも送らない。
+			creditStopped = true
+			paidVia = domain.PaidViaCredit // 課金経路なし
+		default:
+			stripePortion = costMinor
+			paidVia = domain.PaidViaStripe
+		}
+
+		// クレジット消費分を負の grant として記録 (best-effort).
+		if creditPortion > 0 {
+			deduct := &domain.CreditGrant{
+				CreditID:    "deduct-" + ev.EventID,
+				AccountID:   ev.AccountID,
+				CreditType:  domain.CreditTypeConsumed,
+				AmountMinor: -creditPortion,
+				Currency:    currency,
+				Note:        "usage:" + ev.EventID,
+				GrantedBy:   "system",
+				GrantedAt:   s.now().UTC().Format("2006-01-02T15:04:05Z"),
+			}
+			if err := s.usage.GrantCredit(ctx, deduct); err != nil {
+				s.logger.Warn(ctx, "billing.record_usage.credit_deduct_failed", err, map[string]any{
 					"event_id":   ev.EventID,
+					"account_id": ev.AccountID,
 				})
 			}
 		}
+		if creditStopped {
+			s.logger.Info(ctx, "billing.record_usage.credit_exhausted", map[string]any{
+				"account_id": ev.AccountID,
+				"event_id":   ev.EventID,
+				"balance":    balance,
+				"cost":       costMinor,
+			})
+		}
 	}
+
+	ev.PaidVia = paidVia
+	ev.CreditAmountMinor = creditPortion
+	ev.StripeAmountMinor = stripePortion
 
 	// 3. Persist raw event, daily rollup, and account accumulator atomically.
 	date := s.now().UTC().Format("2006-01-02")
@@ -492,18 +527,42 @@ func (s *billingService) RecordUsage(ctx context.Context, ev *domain.UsageEvent)
 		return nil, err
 	}
 
-	// 4. Stripe meter event (best-effort、有料ユーザーのみ意味がある).
-	s.reportStripeMeter(ctx, ev)
+	// 4. Stripe meter event は Stripe portion がある場合のみ送る。
+	//    token 数は cost-比例で按分する (端数は input 側に寄せる)。
+	if stripePortion > 0 {
+		inTok, outTok := proratedTokens(ev.InputTokens, ev.OutputTokens, costMinor, stripePortion)
+		s.reportStripeMeterPortion(ctx, ev, inTok, outTok)
+	}
 
 	return &domain.UsageRecordResult{
-		EventID:        ev.EventID,
-		Cost:           formatMinor(costMinor, currency),
-		BudgetExceeded: exceeded || creditStopped,
-		CreditStopped:  creditStopped,
+		EventID:           ev.EventID,
+		Cost:              formatMinor(costMinor, currency),
+		BudgetExceeded:    exceeded || creditStopped,
+		CreditStopped:     creditStopped,
+		PaidVia:           paidVia,
+		CreditAmountMinor: creditPortion,
+		StripeAmountMinor: stripePortion,
 	}, nil
 }
 
-func (s *billingService) reportStripeMeter(ctx context.Context, ev *domain.UsageEvent) {
+// proratedTokens splits (inputTokens, outputTokens) by the ratio stripePortion/totalCost,
+// rounding the input side up so that small mixed events still report at least 1 input token.
+func proratedTokens(inputTokens, outputTokens, totalCost, stripePortion int64) (int64, int64) {
+	if totalCost <= 0 || stripePortion >= totalCost {
+		return inputTokens, outputTokens
+	}
+	stripeIn := (inputTokens*stripePortion + totalCost - 1) / totalCost
+	stripeOut := (outputTokens * stripePortion) / totalCost
+	if stripeIn > inputTokens {
+		stripeIn = inputTokens
+	}
+	if stripeOut > outputTokens {
+		stripeOut = outputTokens
+	}
+	return stripeIn, stripeOut
+}
+
+func (s *billingService) reportStripeMeterPortion(ctx context.Context, ev *domain.UsageEvent, inputTokens, outputTokens int64) {
 	if s.provider == nil {
 		return
 	}
@@ -511,7 +570,7 @@ func (s *billingService) reportStripeMeter(ctx context.Context, ev *domain.Usage
 	if err != nil || account == nil {
 		return
 	}
-	if err := s.provider.ReportTokenUsage(ctx, account, ev.EventID, ev.InputTokens, ev.OutputTokens); err != nil {
+	if err := s.provider.ReportTokenUsage(ctx, account, ev.EventID, inputTokens, outputTokens); err != nil {
 		s.logger.Warn(ctx, "billing.record_usage.meter_event_failed", err, map[string]any{
 			"account_id": ev.AccountID,
 			"event_id":   ev.EventID,

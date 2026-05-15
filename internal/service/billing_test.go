@@ -299,7 +299,9 @@ func TestRecordUsage_ComputesCostFromPricing_PersistsEventAndRollup(t *testing.T
 	})
 	provider := &billingTestProvider{}
 	svc := NewBillingService(store, store, provider, logger)
-	// 無料クレジット付与（残高0だと free アカウントが CreditStopped になるため）
+	// usage_based プランの顧客として扱う（クレジット使い切り後は Stripe meter 経路に流れる）
+	account.Plan = string(domain.BillingPlanUsageBased)
+	account.StripeCustomerID = "cus_test"
 	require.NoError(t, svc.GrantFreeSignupCredit(ctx, account.AccountID))
 
 	ev := &domain.UsageEvent{
@@ -368,6 +370,8 @@ func TestRecordUsage_TogglesBudgetExceededOnFirstCross(t *testing.T) {
 	account, err := store.GetOrCreateAccount(ctx, "owner")
 	require.NoError(t, err)
 	account.BudgetLimitMinor = 500 // $5 cap
+	account.Plan = string(domain.BillingPlanUsageBased)
+	account.StripeCustomerID = "cus_test"
 	store.SeedPricing(domain.ModelPricing{
 		Model:                    "test-model",
 		InputCostPerMTokenMinor:  1_000_000, // $10000 / 1M token = 1 minor per token
@@ -418,6 +422,8 @@ func TestRecordUsage_StripeMeterFailureWarnsButKeepsAccounting(t *testing.T) {
 	store := mock.NewStore()
 	account, err := store.GetOrCreateAccount(ctx, "owner")
 	require.NoError(t, err)
+	account.Plan = string(domain.BillingPlanUsageBased)
+	account.StripeCustomerID = "cus_test"
 	store.SeedPricing(domain.ModelPricing{
 		Model:                    "test-model",
 		InputCostPerMTokenMinor:  1_000_000,
@@ -442,6 +448,106 @@ func TestRecordUsage_StripeMeterFailureWarnsButKeepsAccounting(t *testing.T) {
 	require.NotEmpty(t, logger.entries)
 	assert.Equal(t, "warn", logger.entries[len(logger.entries)-1].level)
 	assert.Equal(t, "billing.record_usage.meter_event_failed", logger.entries[len(logger.entries)-1].event)
+}
+
+func TestRecordUsage_CreditCoversFullCost_NoStripeMeter(t *testing.T) {
+	// 目的: cost <= 残高なら全額 credit deduct し、Stripe meter を呼ばないこと。
+	// 二重課金（credit + Stripe）を防ぐ厳密版の根幹。
+	ctx := context.Background()
+	logger := &billingTestLogger{}
+	store := mock.NewStore()
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	account.Plan = string(domain.BillingPlanUsageBased)
+	account.StripeCustomerID = "cus_test"
+	store.SeedPricing(domain.ModelPricing{
+		Model:                    "test-model",
+		InputCostPerMTokenMinor:  1_000_000, // 1 minor / token
+		OutputCostPerMTokenMinor: 0,
+		Currency:                 "usd",
+	})
+	provider := &billingTestProvider{}
+	svc := NewBillingService(store, store, provider, logger)
+	require.NoError(t, svc.GrantFreeSignupCredit(ctx, account.AccountID)) // +100
+
+	result, err := svc.RecordUsage(ctx, &domain.UsageEvent{
+		EventID: "evt-credit", AccountID: account.AccountID, Model: "test-model", InputTokens: 50,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.PaidViaCredit, result.PaidVia)
+	assert.Equal(t, int64(50), result.CreditAmountMinor)
+	assert.Equal(t, int64(0), result.StripeAmountMinor)
+	assert.Zero(t, provider.reportTokenUsageCalls, "Stripe meter must not be invoked when credit covers cost")
+	balance, err := store.GetCreditBalance(ctx, account.AccountID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(50), balance, "100 grant - 50 consumed = 50")
+}
+
+func TestRecordUsage_MixedPaymentSplitsTokensProportionally(t *testing.T) {
+	// 目的: cost が残高を超え usage_based プランの場合、残高分は credit、超過分は Stripe meter に流す。
+	// Stripe には按分後の token を送り、credit_amount + stripe_amount = cost を保証する。
+	ctx := context.Background()
+	logger := &billingTestLogger{}
+	store := mock.NewStore()
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	account.Plan = string(domain.BillingPlanUsageBased)
+	account.StripeCustomerID = "cus_test"
+	store.SeedPricing(domain.ModelPricing{
+		Model:                    "test-model",
+		InputCostPerMTokenMinor:  1_000_000, // 1 minor / token
+		OutputCostPerMTokenMinor: 0,
+		Currency:                 "usd",
+	})
+	provider := &billingTestProvider{}
+	svc := NewBillingService(store, store, provider, logger)
+	require.NoError(t, svc.GrantFreeSignupCredit(ctx, account.AccountID)) // +100
+
+	// cost = 250, balance = 100 → credit 100, stripe 150
+	result, err := svc.RecordUsage(ctx, &domain.UsageEvent{
+		EventID: "evt-mixed", AccountID: account.AccountID, Model: "test-model", InputTokens: 250,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.PaidViaMixed, result.PaidVia)
+	assert.Equal(t, int64(100), result.CreditAmountMinor)
+	assert.Equal(t, int64(150), result.StripeAmountMinor)
+	assert.Equal(t, 1, provider.reportTokenUsageCalls, "Stripe meter receives the overflow portion")
+	assert.False(t, result.CreditStopped, "usage_based plan must not stop when Stripe takes over")
+	balance, err := store.GetCreditBalance(ctx, account.AccountID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), balance, "credit fully drained on overflow")
+}
+
+func TestRecordUsage_FreePlanWithoutCredit_StopsWithoutStripe(t *testing.T) {
+	// 目的: free プランで残高 0 のとき、Stripe meter を呼ばず CreditStopped=true で停止すること。
+	// Stripe 顧客未登録なので外部に流せない。worker 側で job 停止判定するための信号。
+	ctx := context.Background()
+	logger := &billingTestLogger{}
+	store := mock.NewStore()
+	account, err := store.GetOrCreateAccount(ctx, "owner")
+	require.NoError(t, err)
+	// plan=free (default), no credit, no Stripe customer.
+	store.SeedPricing(domain.ModelPricing{
+		Model:                    "test-model",
+		InputCostPerMTokenMinor:  1_000_000,
+		OutputCostPerMTokenMinor: 0,
+		Currency:                 "usd",
+	})
+	provider := &billingTestProvider{}
+	svc := NewBillingService(store, store, provider, logger)
+
+	result, err := svc.RecordUsage(ctx, &domain.UsageEvent{
+		EventID: "evt-stop", AccountID: account.AccountID, Model: "test-model", InputTokens: 10,
+	})
+
+	require.NoError(t, err)
+	assert.True(t, result.CreditStopped)
+	assert.True(t, result.BudgetExceeded, "CreditStopped propagates to BudgetExceeded for worker stop signal")
+	assert.Equal(t, int64(0), result.CreditAmountMinor)
+	assert.Equal(t, int64(0), result.StripeAmountMinor)
+	assert.Zero(t, provider.reportTokenUsageCalls, "free plan must not be sent to Stripe meter")
 }
 
 func TestUpdateBudget_OtherUser_DeniedAndReturnsNotFound(t *testing.T) {
